@@ -50,6 +50,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RESTO=$(( 1800 - ($(date +%s) - INIZIO) ))
-          if [ "$RESTO" -gt 0 ]; then sleep "$RESTO"; fi
+          # aspetta fino alla mezz'ora; ma se nel frattempo qualcuno lancia un giro a mano, gli lascia il posto subito
+          while [ $(( $(date +%s) - INIZIO )) -lt 1800 ]; do
+            ALTRI=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow giro.yml --json status,databaseId --jq "[.[] | select((.status==\"pending\" or .status==\"queued\" or .status==\"waiting\") and .databaseId != $GITHUB_RUN_ID)] | length" 2>/dev/null || echo 0)
+            if [ "$ALTRI" -gt 0 ]; then echo "c'è già un giro in coda: gli lascio il posto"; exit 0; fi
+            sleep 30
+          done
           gh workflow run giro.yml --ref main --repo "$GITHUB_REPOSITORY"
