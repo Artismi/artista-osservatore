@@ -130,7 +130,7 @@ ${c.capitoli.map(k => `<section class="capitolo"><h3>${esc(k.titolo)}</h3>${k.pa
 ${S.regole?.length ? `<h3>Le regole della mia firma</h3><ul>${S.regole.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}` + piede)
 
   // ── il feed ──
-  const base = process.env.SITO ?? 'https://artismi.github.io/artista-osservatore/'
+  const base = process.env.DOMINIO ? `https://${process.env.DOMINIO}/` : 'https://artismi.github.io/artista-osservatore/'
   writeFileSync(join(MEM, 'feed.xml'), `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${esc(s.nome)}</title><link>${base}</link><description>${esc(s.profilo?.bio ?? '')}</description>` +
     s.sequenze.slice(0, 30).map(e => `<item><title>${esc(e.titolo)}</title><link>${base}p/${e.id}.html</link><guid>${base}p/${e.id}.html</guid>${e.quando ? `<pubDate>${new Date(e.quando).toUTCString()}</pubDate>` : ''}<description>${esc(corto(e.conclusione, 400))}</description></item>`).join('') + `</channel></rss>`)
 }

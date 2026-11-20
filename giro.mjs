@@ -120,6 +120,7 @@ try {
   const s = await pg.evaluate(() => window.__artista.perIlSito())
   try { scriviBlog(MEM, s, tenere) } catch (e) { console.error('sito non scritto:', e) } // il sito non deve mai far perdere la memoria
   writeFileSync(join(MEM, '.nojekyll'), '')
+  if (process.env.DOMINIO) writeFileSync(join(MEM, 'CNAME'), process.env.DOMINIO + '\n') // il suo indirizzo su artismi, se c'è
   // il token rinnovato, cifrato
   try {
     const conf = JSON.parse(readFileSync(join(homedir(), '.artista-osservatore', 'instagram.json'), 'utf8'))
