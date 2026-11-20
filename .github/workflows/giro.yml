@@ -33,6 +33,7 @@ jobs:
       - name: giro
         env:
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
+          DOMINIO: artista.artismidesignstudio.com
         run: node giro.mjs
       - name: salva
         if: always()
