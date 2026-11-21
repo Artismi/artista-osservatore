@@ -2,7 +2,12 @@ name: giro
 on:
   schedule:
     - cron: '13,43 * * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      sequenza:
+        description: 'si = fa subito una sequenza (vuoto = decide lui)'
+        required: false
+        default: ''
 concurrency:
   group: giro
   cancel-in-progress: false
@@ -34,6 +39,7 @@ jobs:
         env:
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
           DOMINIO: esselave.artismidesignstudio.com
+          SEQUENZA: ${{ inputs.sequenza }}
         run: node giro.mjs
       - name: salva
         if: always()
