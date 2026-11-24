@@ -1,7 +1,7 @@
 name: giro
 on:
   schedule:
-    - cron: '13,43 * * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
     inputs:
       sequenza:
@@ -57,8 +57,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # aspetta fino alla mezz'ora; ma se nel frattempo qualcuno lancia un giro a mano, gli lascia il posto subito
-          while [ $(( $(date +%s) - INIZIO )) -lt 1800 ]; do
+          # aspetta un quarto d'ora; ma se nel frattempo qualcuno lancia un giro a mano, gli lascia il posto subito
+          while [ $(( $(date +%s) - INIZIO )) -lt 900 ]; do
             ALTRI=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow giro.yml --json status,databaseId --jq "[.[] | select((.status==\"pending\" or .status==\"queued\" or .status==\"waiting\") and .databaseId != $GITHUB_RUN_ID)] | length" 2>/dev/null || echo 0)
             if [ "$ALTRI" -gt 0 ]; then echo "c'è già un giro in coda: gli lascio il posto"; exit 0; fi
             sleep 30

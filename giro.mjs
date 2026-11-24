@@ -67,7 +67,7 @@ try {
   } else log('nessuna memoria: nasce adesso')
 
   // il lavoro
-  // l'agenda: che cosa è dovuto (reel ogni 2,5 ore; carosello e storia quando vuole lui, nella finestra libera) e se c'è la finestra libera (ogni 2 ore)
+  // l'agenda: che cosa è dovuto (reel obbligato ogni 2 ore; carosello e storia quando vuole lui) e se c'è la finestra libera (ogni ora)
   const AG = await pg.evaluate(() => window.__artista.agenda())
   log(`agenda: ${AG.dovute.length ? `tocca a ${AG.dovute.join(', ')}` : 'niente di dovuto'}${AG.libera ? '; finestra libera' : ''} (ultima uscita ${AG.daUltima > 90 ? 'mai' : `${AG.daUltima.toFixed(1)} ore fa`})`)
   const vuoleSequenza = AG.dovute.includes('reel') || AG.dovute.includes('carosello')
@@ -106,7 +106,8 @@ try {
   let scelta = null, perche = ''
   if (ig.collegato && AG.daUltima >= 0.66) {
     for (const f of AG.dovute) if (possibili[f]) { scelta = f; perche = `tocca a ${f === 'reel' ? 'un reel' : f === 'storia' ? 'una storia' : 'un carosello'}`; break }
-    if (!scelta && AG.libera && r.pronta) { const f = possibili[r.forma] ? r.forma : 'carosello'; scelta = f; perche = 'finestra libera: ho qualcosa da aggiungere' }
+    // nella finestra libera sceglie la forma che arriva a più persone (pesiForma, dalla portata misurata), con un occhio a quella che aveva in mente
+    if (!scelta && AG.libera && r.pronta) { const pf = AG.pesiForma ?? {}, cand = Object.keys(possibili).filter(f => possibili[f]); const f = cand.sort((a, b) => (pf[b] ?? 1) * (b === r.forma ? 1.1 : 1) - (pf[a] ?? 1) * (a === r.forma ? 1.1 : 1))[0] ?? 'carosello'; scelta = f; perche = `finestra libera: ho qualcosa da aggiungere (${f} arriva di più)` }
   }
   if (scelta) log(`esce ${scelta === 'reel' ? 'un reel' : scelta === 'storia' ? 'una storia' : 'un carosello'} (${perche})`)
   else if (r.pronta) log('la sequenza aspetta la sua finestra')
