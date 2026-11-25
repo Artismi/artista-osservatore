@@ -1,6 +1,7 @@
-// La città interna come mostra: uno spazio buio, le tavole sospese e luminose raccolte in sale (i quartieri),
-// architetture di sole linee, un pavimento lucido che riflette, le tavole senza immagine come polvere di dati,
-// gli abitanti come sfere di luce. Dati: citta.json (scritto dal giro).
+// La città interna come mostra. Ogni quartiere è una sala, allestita dal curatore che la abita (disposizione, luce,
+// fondo: li decide lui, e li cambia). Le tavole si vedono bene: luce vera, niente bagliori. Titoli e schede sono
+// testo vero, sopra la scena. Gli abitanti sono piccole luci che si muovono tra le sale e la piazza.
+// Dati: citta.json (scritto dal giro).
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
@@ -9,247 +10,243 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 
 const D = await (await fetch('citta.json', { cache: 'no-store' })).json()
-const NERO = 0x050608, LINEA = 0xdfe6ee
-const S = 1.4, X = x => (x - 500) * S, Z = y => (y - 500) * S
-const nomeDi = id => D.abitanti.find(a => a.id === id)?.nome ?? (id === 'saggista' ? 'la saggista' : id)
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const nomeDi = id => D.abitanti.find(a => a.id === id)?.nome ?? id
+const da = n => n.replace(/^il /, 'dal ').replace(/^lo /, 'dallo ').replace(/^la /, 'dalla ').replace(/^l'/, "dall'").replace(/^chi /, 'da chi ')
 let z0 = 917; const caso = () => { z0 = (z0 * 1664525 + 1013904223) >>> 0; return z0 / 4294967296 }
-const tinta = q => new THREE.Color().setHSL(((q * 0.61803) % 1), 0.55, 0.62)
+const tinta = q => new THREE.Color().setHSL(((q * 0.61803) % 1), 0.45, 0.55)
+const S = 2.0, X = x => (x - 500) * S, Z = y => (y - 500) * S
+const posDi = new Map(D.punti.map(p => [p.id, p]))
 
-// ── scena, camera, bagliore ──────────────────────────────────────────────────────────────────────────────
+// ── motore ──────────────────────────────────────────────────────────────────────────────────────────────
 const cv = document.getElementById('mondo')
 const R = new THREE.WebGLRenderer({ canvas: cv, antialias: true })
-R.setPixelRatio(Math.min(2, devicePixelRatio)); R.setSize(innerWidth, innerHeight); R.toneMapping = THREE.ACESFilmicToneMapping
-const scena = new THREE.Scene(); scena.background = new THREE.Color(NERO); scena.fog = new THREE.FogExp2(NERO, 0.0011)
-const cam = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 1, 6000)
-const P = { x: X(D.piazza.x), z: Z(D.piazza.y) }
-cam.position.set(P.x + 120, 70, P.z + 330)
-const ctl = new OrbitControls(cam, cv); ctl.target.set(P.x, 38, P.z); ctl.enableDamping = true; ctl.dampingFactor = 0.06
-ctl.maxPolarAngle = Math.PI * 0.495; ctl.minDistance = 30; ctl.maxDistance = 1800; ctl.autoRotate = true; ctl.autoRotateSpeed = 0.18
-cv.addEventListener('pointerdown', () => { ctl.autoRotate = false })
+R.setPixelRatio(Math.min(2, devicePixelRatio)); R.setSize(innerWidth, innerHeight)
+R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.05
+const scena = new THREE.Scene(); scena.fog = new THREE.Fog(0x06070a, 900, 2600)
+const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 1, 8000)
+const P = new THREE.Vector3(X(D.piazza.x), 0, Z(D.piazza.y))
+const ctl = new OrbitControls(cam, cv); ctl.enableDamping = true; ctl.dampingFactor = 0.07; ctl.maxPolarAngle = Math.PI * 0.49; ctl.minDistance = 25; ctl.maxDistance = 2200
 const comp = new EffectComposer(R); comp.addPass(new RenderPass(scena, cam))
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.6, 0.62); comp.addPass(bloom); comp.addPass(new OutputPass())
+comp.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.35, 0.4, 0.92)) // solo le luci degli abitanti, non le tavole
+comp.addPass(new OutputPass())
 addEventListener('resize', () => { R.setSize(innerWidth, innerHeight); comp.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix() })
+scena.add(new THREE.HemisphereLight(0x9aa6b8, 0x0b0b0d, 0.35))
 
-const alone = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c) })()
-
-// ── il pavimento: nero lucido (lascia passare i riflessi), una griglia sottile, all'orizzonte un rilievo di linee ─
-{
-  const pav = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshBasicMaterial({ color: 0x07080b, transparent: true, opacity: 0.8, depthWrite: false }))
-  pav.rotation.x = -Math.PI / 2; pav.renderOrder = 1; scena.add(pav)
-  const griglia = new THREE.GridHelper(3000, 150, LINEA, LINEA); griglia.material.transparent = true; griglia.material.opacity = 0.05; griglia.position.y = 0.05; griglia.renderOrder = 2; scena.add(griglia)
-  const N = 120, L = 3400, g = new THREE.PlaneGeometry(L, L, N, N); g.rotateX(-Math.PI / 2)
-  const pos = g.attributes.position
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), z = pos.getZ(i), d = Math.hypot(x, z)
-    const fuori = Math.max(0, (d - 950) / 700), n = Math.sin(x * 0.011) * Math.cos(z * 0.013) + Math.sin(x * 0.027 + z * 0.019) * 0.6 + Math.sin(z * 0.043) * 0.3
-    pos.setY(i, Math.max(0, fuori * fuori * (40 + n * 55 + 30)))
-  }
-  const rilievo = new THREE.LineSegments(new THREE.WireframeGeometry(g), new THREE.LineBasicMaterial({ color: LINEA, transparent: true, opacity: 0.08 }))
-  rilievo.position.set(P.x, 0.1, P.z); scena.add(rilievo)
-}
-
-// ── scritte sottili, come le didascalie di una mostra ──────────────────────────────────────────────────────
-function didascalia(righe, o = {}) {
-  const f = o.font ?? '300 34px "JetBrains Mono", ui-monospace, monospace', pad = 6
-  const c = document.createElement('canvas'), g = c.getContext('2d'); g.font = f
-  const lh = parseInt(f.match(/(\d+)px/)[1]) * 1.35
-  const largo = r => g.measureText(r).width + r.length * (o.spazio ?? 0)
-  c.width = Math.ceil(Math.max(...righe.map(largo)) + pad * 2); c.height = Math.ceil(righe.length * lh + pad * 2)
-  g.font = f; g.fillStyle = o.colore ?? '#e9ecf1'; g.textBaseline = 'top'
-  righe.forEach((r, i) => { g.globalAlpha = i ? 0.55 : 1; let x = pad; for (const ch of r) { g.fillText(ch, x, pad + i * lh); x += g.measureText(ch).width + (o.spazio ?? 0) } })
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false, opacity: o.alfa ?? 0.9, side: THREE.DoubleSide }))
-  const h = o.alto ?? 2; m.scale.set(h * c.width / c.height, h, 1)
-  return m
-}
-
-// ── le tavole senza immagine: polvere di dati sul pavimento, colorata per quartiere ────────────────────────
-{
-  const sole = D.punti.filter(p => !p.img)
-  const g = new THREE.BufferGeometry(), pos = new Float32Array(sole.length * 3), col = new Float32Array(sole.length * 3)
-  sole.forEach((p, i) => { pos.set([X(p.x) + (caso() - 0.5) * 6, 0.8 + p.i * 3, Z(p.y) + (caso() - 0.5) * 6], i * 3); const c = tinta(p.q).multiplyScalar(0.5 + p.i * 0.6); col.set([c.r, c.g, c.b], i * 3) })
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3))
-  const punti = new THREE.Points(g, new THREE.PointsMaterial({ size: 3, map: alone, vertexColors: true, transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending }))
-  punti.renderOrder = 3; scena.add(punti)
-}
-
-// ── le sale: ogni quartiere è una parete sospesa di tavole luminose, dentro una cornice di linee ──────────────
-const cliccabili = [], carica = new THREE.TextureLoader()
-const posDi = new Map(D.punti.map(p => [p.id, p]))
+// ── le sale: dove stanno (dal territorio), allontanate quel tanto che basta per non toccarsi ─────────────────
 const perQ = new Map(); for (const p of D.punti.filter(p => p.img)) { if (!perQ.has(p.q)) perQ.set(p.q, []); perQ.get(p.q).push(p) }
-const doveTavola = new Map()
-function tavola(p, w, h, gr, x, y) {
-  const mat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a, toneMapped: false })
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); m.position.set(x, y, 0)
-  // il riflesso sotto il pavimento: la tavola capovolta, sbiadita e un po' allungata
-  const rmat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false, toneMapped: false })
-  const rif = new THREE.Mesh(new THREE.PlaneGeometry(w, h), rmat); rif.position.set(x, -y * 1.05, 0); rif.scale.y = -1.15
-  carica.load(`img/${p.id}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true; rmat.map = t; rmat.needsUpdate = true })
-  // il bordo che fa luce: è lui che il bagliore allarga
-  const bordo = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.8, h + 0.8), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.7, 1.75, 1.8), toneMapped: false }))
-  bordo.position.set(x, y, -0.1)
-  gr.add(bordo, m, rif)
-  m.userData = { tipo: 'tavola', p }; cliccabili.push(m)
-  return { x, y, w, h }
-}
-for (const q of D.quartieri) {
-  const tav = (perQ.get(q.id) ?? []).sort((a, b) => b.i - a.i).slice(0, 24)
-  if (!tav.length) continue
-  const gr = new THREE.Group(); gr.position.set(X(q.x), 0, Z(q.y))
-  // la parete: la tavola migliore al centro e grande, le altre attorno come una costellazione
-  const pezzi = []
-  tav.forEach((p, i) => {
-    const grande = i === 0 ? 1 : i < 3 ? 0.62 : 0.3 + p.i * 0.22
-    const h = 34 * grande, w = h * 0.8
-    let x = 0, y = 40, prova = 0
-    if (i) do { const a = caso() * Math.PI * 2, r = 14 + Math.sqrt(i) * 11 + caso() * 8; x = Math.cos(a) * r * 1.5; y = 40 + Math.sin(a) * r * 0.7; prova++ } while (prova < 60 && (y - h / 2 < 7 || pezzi.some(o => Math.abs(o.x - x) < (o.w + w) / 2 + 2.5 && Math.abs(o.y - y) < (o.h + h) / 2 + 2.5)))
-    pezzi.push(tavola(p, w, h, gr, x, y)); doveTavola.set(p.id, gr)
-  })
-  // la cornice: una scatola di sole linee attorno alla parete, e la didascalia della sala
-  const x0 = Math.min(...pezzi.map(o => o.x - o.w / 2)) - 8, x1 = Math.max(...pezzi.map(o => o.x + o.w / 2)) + 8
-  const y1 = Math.max(...pezzi.map(o => o.y + o.h / 2)) + 10
-  const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(x1 - x0, y1, 36)), new THREE.LineBasicMaterial({ color: LINEA, transparent: true, opacity: 0.3 }))
-  box.position.set((x0 + x1) / 2, y1 / 2, -6); gr.add(box)
-  const cap = didascalia([q.nome.toUpperCase(), `${q.n} tavole`], { alto: 4.2, spazio: 6 })
-  cap.position.set(x0 + 0.5 * cap.scale.x, 3.4, 12.5); gr.add(cap)
-  gr.lookAt(P.x, 0, P.z) // ogni sala guarda la piazza
-  scena.add(gr)
+const sale = D.quartieri.filter(q => perQ.has(q.id)).map(q => ({ q, c: new THREE.Vector3(X(q.x), 0, Z(q.y)), s: q.sala ?? { disposizione: 'parete', luce: 'calda', fondo: 'nero', quante: 7, curatore: null, perche: '' } }))
+for (let it = 0; it < 80; it++) for (const a of sale) for (const b of sale) { if (a === b) continue; const d = a.c.distanceTo(b.c), min = 150; if (d < min) { const v = a.c.clone().sub(b.c).setY(0).normalize().multiplyScalar((min - d) / 2 + 0.01); a.c.add(v); b.c.sub(v) } }
+for (const s of sale) { const v = s.c.clone().sub(P); if (v.length() < 140) s.c.copy(P).add(v.setLength(140)) }
+function luceDi(s) {
+  const L = s.s.luce, c = L === 'calda' ? 0xffd9b0 : L === 'fredda' ? 0xd2e4ff : L === 'colore' ? tinta(s.q.id).getHex() : 0xfff4e8
+  return { colore: new THREE.Color(c), radente: L === 'radente', zenitale: L === 'zenitale' }
 }
 
-// ── la piazza: un portale di linee, il nome della città, la mostra come ologrammi sospesi ────────────────────
-const ologrammi = []
-const OLO = new THREE.ShaderMaterial({
-  transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, toneMapped: false,
-  uniforms: { map: { value: null }, t: { value: 0 }, tinta: { value: new THREE.Color('#7fe0ff') } },
-  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-  fragmentShader: `uniform sampler2D map; uniform float t; uniform vec3 tinta; varying vec2 vUv;
-    void main(){
-      float riga = 0.6 + 0.4*sin(vUv.y*520.0 - t*5.0);
-      float s = 0.003 + 0.002*sin(t*1.3 + vUv.y*24.0);
-      vec3 c = vec3(texture2D(map, vUv + vec2(s,0.)).r, texture2D(map, vUv).g, texture2D(map, vUv - vec2(s,0.)).b);
-      float l = dot(c, vec3(.3,.59,.11));
-      float bordo = smoothstep(0.,.03,vUv.x)*smoothstep(1.,.97,vUv.x)*smoothstep(0.,.02,vUv.y)*smoothstep(1.,.98,vUv.y);
-      vec3 col = mix(c, tinta*(0.4+l), 0.45) * riga * (0.9 + 0.1*sin(t*11.0));
-      gl_FragColor = vec4(col*1.3, (0.35 + 0.55*l) * bordo);
-    }`,
+// ── il cielo e il pavimento: due shader calmi (le pozze di luce sotto le sale, una trama sottile, il cielo profondo) ─
+const cieloMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, uniforms: { t: { value: 0 } },
+  vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+  fragmentShader: `varying vec3 vP; uniform float t;
+    float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,37.719)))*43758.5453); }
+    float n(vec3 p){ vec3 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(mix(h(i),h(i+vec3(1,0,0)),f.x),mix(h(i+vec3(0,1,0)),h(i+vec3(1,1,0)),f.x),f.y),mix(mix(h(i+vec3(0,0,1)),h(i+vec3(1,0,1)),f.x),mix(h(i+vec3(0,1,1)),h(i+vec3(1,1,1)),f.x),f.y),f.z); }
+    void main(){ float y = vP.y; vec3 c = mix(vec3(.035,.038,.05), vec3(.012,.013,.02), smoothstep(0.,.6,y));
+      c += vec3(.05,.045,.04) * exp(-abs(y)*14.);
+      float neb = n(vP*3.+t*.01)*.6 + n(vP*7.)*.4; c += vec3(.02,.025,.04) * smoothstep(.55,.9,neb) * smoothstep(0.,.3,y);
+      gl_FragColor = vec4(c,1.); }`,
 })
-function proietta(id, x, y, z, h) {
-  const mat = OLO.clone(); mat.uniforms.tinta.value = new THREE.Color(caso() < 0.5 ? '#7fe0ff' : '#ff8fe6')
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(h * 0.8, h), mat); m.position.set(x, y, z); m.userData.guarda = true
-  carica.load(`img/${id}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; mat.uniforms.map.value = t })
-  const fascio = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.35, h * 0.05, y - h / 2, 32, 1, true), new THREE.MeshBasicMaterial({ color: mat.uniforms.tinta.value, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }))
-  fascio.position.set(x, (y - h / 2) / 2, z)
-  scena.add(m, fascio); ologrammi.push(mat); m.userData.tipo = 'tavola'; m.userData.p = posDi.get(id) ?? { id, t: '' }; cliccabili.push(m)
-}
+scena.add(new THREE.Mesh(new THREE.SphereGeometry(4000, 32, 16), cieloMat))
 {
-  const H = 120, W = 70
-  const portale = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(W, H, W)), new THREE.LineBasicMaterial({ color: LINEA, transparent: true, opacity: 0.55 }))
-  portale.position.set(P.x, H / 2, P.z); scena.add(portale)
-  for (let i = 2; i < 5; i += 2) { // dentro il portale, cornici che si stringono: un corridoio di linee
-    const k = 1 - i * 0.12, r = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(W * k, H * k, W * k)), new THREE.LineBasicMaterial({ color: LINEA, transparent: true, opacity: 0.1 }))
-    r.position.set(P.x, H * k / 2, P.z); scena.add(r)
+  const pos = [], col = []
+  for (let i = 0; i < 32; i++) { const s = sale[i]; pos.push(s ? new THREE.Vector3(s.c.x, s.c.z, 1) : new THREE.Vector3(0, 0, 0)); col.push(s ? luceDi(s).colore.clone() : new THREE.Color(0)) }
+  const pav = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.ShaderMaterial({
+    uniforms: { pozze: { value: pos }, colori: { value: col }, piazza: { value: new THREE.Vector2(P.x, P.z) } },
+    vertexShader: 'varying vec2 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.); vW = w.xz; gl_Position = projectionMatrix*viewMatrix*w; }',
+    fragmentShader: `varying vec2 vW; uniform vec3 pozze[32]; uniform vec3 colori[32]; uniform vec2 piazza;
+      void main(){ vec3 c = vec3(.016,.017,.02);
+        for (int i=0;i<32;i++){ if (pozze[i].z < .5) continue; float d = length(vW - pozze[i].xy); c += colori[i] * .09 * exp(-d*d/(2.*70.*70.)); }
+        float dp = length(vW-piazza); c += vec3(.06,.058,.055) * exp(-dp*dp/(2.*60.*60.));
+        vec2 g = abs(fract(vW/40.)-.5); float riga = smoothstep(.49,.5,max(g.x,g.y)); c += riga * .012 * exp(-dp/900.);
+        gl_FragColor = vec4(c,1.); }`,
+  }))
+  pav.rotation.x = -Math.PI / 2; scena.add(pav)
+}
+
+// ── allestire una sala ──────────────────────────────────────────────────────────────────────────────────
+const cliccabili = [], carica = new THREE.TextureLoader(), etichette = [], strato = document.getElementById('etichette')
+const tavolaMat = (p) => { const m = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.62, metalness: 0 }); carica.load(`img/${p.id}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; m.map = t; m.color.set(0xffffff); m.emissiveMap = t; m.emissive.set(0x262626); m.needsUpdate = true }); return m }
+function allestisci(s) {
+  const g = new THREE.Group(); g.position.copy(s.c); g.lookAt(P.x, 0, P.z); scena.add(g)
+  const tav = perQ.get(s.q.id).sort((a, b) => b.i - a.i).slice(0, Math.max(3, Math.min(12, s.s.quante ?? 7)))
+  const L = luceDi(s), d = s.s.disposizione, h = 22, w = h * 0.8, gap = 7
+  const posti = []
+  if (d === 'griglia') { const col = Math.ceil(Math.sqrt(tav.length * 1.6)); tav.forEach((p, i) => posti.push([(i % col - (col - 1) / 2) * (w + gap), 12 + Math.floor(i / col) * (h + gap), 0, 0])) }
+  else if (d === 'arco') { const n = tav.length, apre = Math.min(Math.PI * 0.9, n * 0.32); tav.forEach((p, i) => { const a = -apre / 2 + (n === 1 ? 0.5 : i / (n - 1)) * apre; posti.push([Math.sin(a) * 60, 14, -Math.cos(a) * 60 + 50, -a]) }) }
+  else if (d === 'sospese') tav.forEach(() => posti.push([(caso() - 0.5) * 90, 10 + caso() * 40, (caso() - 0.5) * 30, (caso() - 0.5) * 0.5]))
+  else if (d === 'colonna') tav.forEach((p, i) => posti.push([(i % 2 ? 1 : -1) * (w / 2 + 2), 10 + Math.floor(i / 2) * (h + 4), 0, 0]))
+  else if (d === 'pavimento') { const col = Math.ceil(Math.sqrt(tav.length)); tav.forEach((p, i) => posti.push([(i % col - (col - 1) / 2) * (w + gap), 0.4, (Math.floor(i / col) - (col - 1) / 2) * (h + gap) + 10, 'terra'])) }
+  else { let x = 0; const k = tav.map((p, i) => i === 0 ? 1.5 : 1), tot = k.reduce((a, b) => a + b * w + gap, -gap); tav.forEach((p, i) => { posti.push([x - tot / 2 + (k[i] * w) / 2, 12, 0, 0, k[i]]); x += k[i] * w + gap }) }
+  const xs = posti.map(p => p[0]), ys = posti.map(p => p[1] + h * (p[4] ?? 1))
+  const larga = Math.max(...xs) - Math.min(...xs) + w * 1.6 + 20, alta = Math.max(...ys) + 12
+  // il fondo: una parete che regge le tavole (o niente, se il curatore non la vuole)
+  if (s.s.fondo !== 'nessuno' && d !== 'pavimento' && d !== 'arco' && d !== 'sospese') {
+    const colFondo = s.s.fondo === 'chiaro' ? 0xcfccc6 : s.s.fondo === 'colore' ? tinta(s.q.id).multiplyScalar(0.55).getHex() : 0x15161a
+    const muro = new THREE.Mesh(new THREE.BoxGeometry(larga, alta, 2), new THREE.MeshStandardMaterial({ color: colFondo, roughness: 0.92 }))
+    muro.position.set((Math.max(...xs) + Math.min(...xs)) / 2, alta / 2, -2.2); g.add(muro)
   }
-  const nome = didascalia([(D.nome ?? 'una città senza nome').toUpperCase(), `giorno ${D.giorno} · ${D.abitanti.length} abitanti`], { alto: 6, spazio: 10 })
-  nome.position.set(P.x, H + 12, P.z); nome.userData.guarda = true; scena.add(nome)
+  tav.forEach((p, i) => {
+    const [x, y, z, r, k = 1] = posti[i], ww = w * k, hh = h * k
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(ww, hh), tavolaMat(p))
+    if (r === 'terra') { m.rotation.x = -Math.PI / 2; m.position.set(x, y, z) } else { m.position.set(x, y + hh / 2, z); m.rotation.y = r }
+    const cornice = new THREE.Mesh(new THREE.PlaneGeometry(ww + 0.8, hh + 0.8), new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.5 }))
+    cornice.position.copy(m.position); cornice.rotation.copy(m.rotation); cornice.translateZ(-0.15)
+    g.add(cornice, m); m.userData = { tipo: 'tavola', p, sala: s }; cliccabili.push(m)
+  })
+  // la luce della sala: uno spot (dall'alto, di taglio, o di fronte), come in un museo
+  g.updateMatrixWorld()
+  const spot = new THREE.SpotLight(L.colore, 2.4, 0, Math.PI / 5, 0.55, 0)
+  spot.position.copy(g.localToWorld(new THREE.Vector3(L.radente ? larga * 0.7 : 0, L.zenitale ? alta + 90 : alta + 45, L.radente ? 25 : L.zenitale ? 10 : 75)))
+  spot.target.position.copy(g.localToWorld(new THREE.Vector3(0, d === 'pavimento' ? 0 : alta * 0.45, 0))); scena.add(spot, spot.target)
+  const nomeCur = s.s.curatore ? nomeDi(s.s.curatore) : null
+  const e = document.createElement('div'); e.className = 'et sala'
+  e.innerHTML = `<div class="t">${esc(s.q.nome)}</div><div class="s">${s.q.n} tavole${nomeCur ? ` · curata ${esc(da(nomeCur))}` : ''}</div>`
+  e.onclick = () => vaiA(s)
+  strato.appendChild(e)
+  etichette.push({ el: e, p: g.localToWorld(new THREE.Vector3(Math.min(...xs) - w / 2, d === 'pavimento' ? 2 : 6, 4)), lontano: 1100 })
+  s.g = g; s.alta = alta; s.larga = larga
+}
+for (const s of sale) allestisci(s)
+
+// ── la piazza: una pedana di pietra, il nome della città, la mostra e i cantieri ────────────────────────────
+{
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(52, 54, 1.5, 96), new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.85 })); ped.position.set(P.x, 0.75, P.z); scena.add(ped)
+  const luce = new THREE.SpotLight(0xfff1dd, 1.6, 0, Math.PI / 6, 0.7, 0); luce.position.set(P.x, 160, P.z + 20); luce.target.position.copy(P); scena.add(luce, luce.target)
   const opere = (D.mostre[0]?.opere ?? []).filter(o => posDi.get(o.id)?.img)
-  opere.forEach((o, i) => { const a = (i / Math.max(1, opere.length)) * Math.PI * 2; proietta(o.id, P.x + Math.cos(a) * 20, 48 + i * 10, P.z + Math.sin(a) * 20, 26) })
-  // anche sopra le tavole più discusse sale un ologramma
-  const annotate = [...new Set(D.annotazioni.map(a => a.tavola))].filter(id => doveTavola.has(id)).slice(-3)
-  for (const id of annotate) { const v = new THREE.Vector3().setFromMatrixPosition(doveTavola.get(id).matrixWorld); proietta(id, v.x, 100 + caso() * 20, v.z, 24) }
-  // i cantieri: impalcature di linee attorno alla piazza, una per idea in costruzione
+  opere.forEach((o, i) => {
+    const a = (i / Math.max(1, opere.length)) * Math.PI * 2, p = posDi.get(o.id)
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(17, 21), tavolaMat(p)); m.position.set(P.x + Math.cos(a) * 30, 14, P.z + Math.sin(a) * 30); m.lookAt(P.x, 14, P.z); m.rotateY(Math.PI)
+    scena.add(m); m.userData = { tipo: 'tavola', p, mostra: o }; cliccabili.push(m)
+  })
+  const e = document.createElement('div'); e.className = 'et'; e.innerHTML = `<div class="t">${esc(D.nome ?? 'La città senza nome')}</div><div class="s">la piazza${opere.length ? ` · in mostra ${opere.length} tavole della bottega` : ''}</div>`
+  strato.appendChild(e); etichette.push({ el: e, p: new THREE.Vector3(P.x, 40, P.z), lontano: 2600 })
   D.cantieri.forEach((c, i) => {
-    const a = 0.7 + i * 1.05, x = P.x + Math.cos(a) * 120, z = P.z + Math.sin(a) * 120, n = c.passi.length, h = 18 + n * 14
-    const imp = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(16, h, 16, 1, n, 1)), new THREE.LineBasicMaterial({ color: LINEA, transparent: true, opacity: 0.35 }))
-    imp.position.set(x, h / 2, z); scena.add(imp)
-    const d = didascalia(['CANTIERE', c.cosa.slice(0, 60)], { alto: 3.2 }); d.position.set(x, h + 5, z); d.userData.guarda = true; scena.add(d)
+    const a = 0.8 + i * 1.1, x = P.x + Math.cos(a) * 95, z = P.z + Math.sin(a) * 95, hh = 14 + c.passi.length * 9
+    const imp = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(12, hh, 12, 1, c.passi.length, 1)), new THREE.LineBasicMaterial({ color: 0x8a8a8a, transparent: true, opacity: 0.6 })); imp.position.set(x, hh / 2, z); scena.add(imp)
+    const el = document.createElement('div'); el.className = 'et'; el.innerHTML = `<div class="s">cantiere</div><div class="t" style="font-size:13px">${esc(c.cosa.slice(0, 70))}</div>`
+    strato.appendChild(el); etichette.push({ el, p: new THREE.Vector3(x, hh + 4, z), lontano: 500 })
   })
 }
 
-// ── le annotazioni: un filo bianco dalla sala a una nota scritta a mano, sospesa ────────────────────────────
-function spezza(t, n) { const out = []; let r = ''; for (const w of String(t).split(' ')) { if ((r + ' ' + w).trim().length > n && r) { out.push(r); r = w } else r = (r + ' ' + w).trim() } if (r) out.push(r); return out.slice(0, 4) }
-for (const a of D.annotazioni.slice(-30)) {
-  const p = posDi.get(a.tavola); if (!p) continue
-  const gr = doveTavola.get(p.id)
-  const base = gr ? new THREE.Vector3().setFromMatrixPosition(gr.matrixWorld).add(new THREE.Vector3(0, 62, 0)) : new THREE.Vector3(X(p.x), 3, Z(p.y))
-  const fine = base.clone().add(new THREE.Vector3((caso() - 0.5) * 80, 20 + caso() * 40, (caso() - 0.5) * 80))
-  const nota = didascalia([`${nomeDi(a.chi)} —`, ...spezza(a.testo, 34)], { font: 'italic 300 30px Georgia, "Times New Roman", serif', alto: 1.9, colore: '#f4efe6', alfa: 0.85 })
-  nota.position.copy(fine); nota.userData = { tipo: 'nota', a, guarda: true }; scena.add(nota); cliccabili.push(nota)
-  const curva = new THREE.QuadraticBezierCurve3(base, base.clone().lerp(fine, 0.5).add(new THREE.Vector3(0, 12, 0)), fine.clone().add(new THREE.Vector3(0, -nota.scale.y / 2, 0)))
-  scena.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(curva.getPoints(30)), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 })))
+// ── le note a mano: compaiono vicino alla loro sala quando ci si avvicina ───────────────────────────────────
+const salaDi = new Map(); for (const s of sale) for (const p of perQ.get(s.q.id)) salaDi.set(p.id, s)
+for (const a of D.annotazioni.slice(-24)) {
+  const s = salaDi.get(a.tavola); if (!s?.g) continue
+  const el = document.createElement('div'); el.className = 'et nota'; el.innerHTML = `<b>${esc(nomeDi(a.chi))}</b>${esc(a.testo)}`
+  strato.appendChild(el)
+  etichette.push({ el, p: s.g.localToWorld(new THREE.Vector3((caso() - 0.5) * s.larga, s.alta + 8 + caso() * 18, 6)), lontano: 260 })
 }
 
-// ── gli abitanti: sfere di luce che vanno dalla loro casa alla piazza lasciando una scia ─────────────────────
+// ── gli abitanti: piccole luci che vanno e vengono tra la loro casa e la piazza ─────────────────────────────
 const passanti = []
+const alone = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,.25)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c) })()
 for (const a of D.abitanti) {
-  const col = new THREE.Color(a.tipo === 'mestiere' ? '#ffb46b' : a.tipo === 'testa' ? '#8fd8ff' : '#ffffff')
-  const sfera = new THREE.Mesh(new THREE.SphereGeometry(1.4, 20, 14), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(2.2), toneMapped: false }))
-  const luce = new THREE.Sprite(new THREE.SpriteMaterial({ map: alone, color: col, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })); luce.scale.set(14, 14, 1)
-  const g = new THREE.Group(); g.add(sfera, luce); scena.add(g)
-  let via = [a.casa, ...a.visti.map(id => posDi.get(id)).filter(Boolean), D.piazza].map(p => new THREE.Vector3(X(p.x), 0, Z(p.y)))
-  if (a.tipo === 'figura') via = [0, 1, 2, 3].map(k => new THREE.Vector3(P.x + Math.cos(k * 1.7 + caso()) * 30, 0, P.z + Math.sin(k * 1.7 + caso()) * 30))
-  const curva = via.length >= 2 ? new THREE.CatmullRomCurve3(via, a.tipo === 'figura') : null
-  const N = 40, scia = new THREE.BufferGeometry(); scia.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3))
-  scena.add(new THREE.Line(scia, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, toneMapped: false })))
-  const p = { g, curva, v: 0.004 + caso() * 0.004, fase: caso(), alt: 14 + caso() * 30, scia, N, a }
-  if (curva) { const q = curva.getPointAt(p.fase), arr = scia.attributes.position.array; for (let i = 0; i < N; i++) arr.set([q.x, p.alt, q.z], i * 3) }
-  passanti.push(p)
-  sfera.userData = { tipo: 'abitante', a }; cliccabili.push(sfera)
+  const col = new THREE.Color(a.tipo === 'mestiere' ? '#ffcf9a' : a.tipo === 'testa' ? '#a9dcff' : a.tipo === 'scienziato' ? '#c9b6ff' : '#ffffff')
+  const sf = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12), new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(3), toneMapped: false }))
+  const al = new THREE.Sprite(new THREE.SpriteMaterial({ map: alone, color: col, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending })); al.scale.set(7, 7, 1)
+  const g = new THREE.Group(); g.add(sf, al); scena.add(g)
+  const casa = new THREE.Vector3(X(a.casa.x), 0, Z(a.casa.y)), via = [casa, ...a.visti.map(id => posDi.get(id)).filter(Boolean).map(p => new THREE.Vector3(X(p.x), 0, Z(p.y))), P.clone()]
+  passanti.push({ g, curva: new THREE.CatmullRomCurve3(via.length > 1 ? via : [casa, P.clone()]), v: 0.003 + caso() * 0.003, fase: caso(), alt: 26 + caso() * 20, a })
+  sf.userData = { tipo: 'abitante', a }; cliccabili.push(sf)
 }
 
-// ── il pannello: verbale, decisioni, officina, cantieri, mostra ────────────────────────────────────────────
-{
-  const pan = document.getElementById('pannello'), G = D.giornate[0]
-  let h = ''
-  if (G) { h += `<h2>Giornata ${G.cittaGiorno}</h2>`; let fase = ''; for (const b of G.verbale) { if (b.fase !== fase) { fase = b.fase; h += `<div class="fase">${esc(fase)}</div>` } h += `<p class="b"><span class="chi">${esc(nomeDi(b.chi))}</span> ${esc(b.testo)}</p>` } }
-  if (D.decisioni.length) h += `<h2>Decisioni</h2>` + D.decisioni.map(d => `<p class="b">${esc(d.cosa)} <span style="opacity:.5">${esc(d.stato)}${d.esito ? ` · ${esc(d.esito)}` : ''}</span></p>`).join('')
-  if (D.officina.length) h += `<h2>Officina</h2>` + D.officina.map(o => `<p class="b"><span class="chi">${esc(o.nome)}</span> — ${esc(o.autore)}<br><code>${esc(o.testo)}</code></p>`).join('')
-  if (D.cantieri.length) h += `<h2>Cantieri</h2>` + D.cantieri.map(c => `<p class="b">${esc(c.cosa)}<br>${c.passi.map(p => `<span style="opacity:.55">— ${esc(p.testo)} · ${esc(p.dove)} · ${esc(p.stato)}</span>`).join('<br>')}</p>`).join('')
-  if (D.mostre.length) h += `<h2>Mostra</h2>` + D.mostre[0].opere.map(o => `<p class="b">«${esc(o.titolo)}» <span style="opacity:.55">${esc(o.perche)}</span></p>`).join('')
-  pan.innerHTML = h || '<p>La città è appena nata.</p>'
-  pan.classList.add('chiuso')
-  document.getElementById('apri').onclick = () => pan.classList.toggle('chiuso')
-}
+// ── l'indice: le sale in ordine di grandezza, la piazza, l'osservatorio ────────────────────────────────────
+const ind = document.getElementById('indice')
+ind.innerHTML = `<h3>la piazza</h3><button data-k="piazza">${esc(D.nome ?? 'La città senza nome')}<small>${D.abitanti.length} abitanti · ${D.decisioni.filter(d => d.stato === 'in vigore').length} decisioni in vigore</small></button>
+<h3>le sale</h3>${sale.slice().sort((a, b) => b.q.n - a.q.n).map(s => `<button data-q="${s.q.id}">${esc(s.q.nome)}<small>${s.q.n} tavole · ${esc(s.s.disposizione)}, luce ${esc(s.s.luce)}</small></button>`).join('')}
+${D.osservatorio ? `<h3>l'osservatorio</h3><button data-k="oss">La biblioteca degli universi<small>${D.osservatorio.campioni} mondi misurati</small></button>` : ''}`
+ind.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.q) vaiA(sale.find(s => String(s.q.id) === b.dataset.q)); else if (b.dataset.k === 'piazza') { vola(P.clone().add(new THREE.Vector3(0, 70, 160)), P.clone().add(new THREE.Vector3(0, 14, 0))); scheda(schedaPiazza()) } else if (b.dataset.k === 'oss') scheda(schedaOss()) }
 
-// ── toccare ──────────────────────────────────────────────────────────────────────────────────────────────
-const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(), etichetta = document.getElementById('etichetta'), scheda = document.getElementById('scheda')
-const colpito = e => { mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(mouse, cam); return ray.intersectObjects(cliccabili, false)[0]?.object }
-cv.addEventListener('pointermove', e => {
-  const o = colpito(e); if (!o) { etichetta.style.display = 'none'; cv.style.cursor = ''; return }
-  const u = o.userData; cv.style.cursor = 'pointer'
-  etichetta.textContent = u.tipo === 'tavola' ? `${u.p.t || 'tavola'} — giorno ${u.p.g ?? ''}` : u.tipo === 'nota' ? `${nomeDi(u.a.chi)} · giorno ${u.a.giorno}` : u.a ? `${u.a.nome} · ${u.a.carica}` : ''
-  etichetta.style.display = 'block'; etichetta.style.left = e.clientX + 14 + 'px'; etichetta.style.top = e.clientY + 12 + 'px'
-})
+// ── le schede: testo vero, con i link ───────────────────────────────────────────────────────────────────
+const sc = document.getElementById('scheda')
+function scheda(html) { sc.innerHTML = `<button class="chiudi" aria-label="chiudi">×</button>${html}`; sc.style.display = 'block'; sc.querySelector('.chiudi').onclick = () => { sc.style.display = 'none' } }
+function schedaTavola(p, extra = '') {
+  const note = D.annotazioni.filter(a => a.tavola === p.id)
+  return `<img src="img/${p.id}.jpg" alt=""><div class="meta">giorno ${p.g} · interesse ${Math.round((p.i ?? 0) * 100)}%</div><h2>${esc(p.t)}</h2>${D.tavole?.[p.id]?.testo ? `<p>${esc(D.tavole[p.id].testo)}…</p>` : ''}${extra}${note.length ? `<div class="meta" style="margin-top:16px">le note degli abitanti</div>${note.map(n => `<div class="riga"><b>${esc(nomeDi(n.chi))}</b> ${esc(n.testo)}</div>`).join('')}` : ''}<p><a href="giorni/${p.g}.html#${p.id}">la giornata in cui è nata →</a></p>`
+}
+function schedaSala(s) {
+  const nomeCur = s.s.curatore ? nomeDi(s.s.curatore) : null
+  return `<div class="meta">sala · ${s.q.n} tavole</div><h2>${esc(s.q.nome)}</h2><p>Le tavole che parlano di ${esc((s.q.concetti ?? []).join(', '))}.</p>${nomeCur ? `<p>La cura ${esc(nomeCur)}: ${esc(s.s.perche || s.s.disposizione)}.</p>` : ''}<div class="meta" style="margin-top:14px">in sala</div>${perQ.get(s.q.id).sort((a, b) => b.i - a.i).slice(0, 12).map(p => `<div class="riga"><a href="giorni/${p.g}.html#${p.id}">${esc(p.t || 'tavola')}</a> <span style="opacity:.5">giorno ${p.g}</span></div>`).join('')}`
+}
+function schedaPiazza() {
+  const G = D.giornate[0]; let h = `<div class="meta">la piazza · giornata ${G?.cittaGiorno ?? ''}</div><h2>${esc(D.nome ?? 'La città senza nome')}</h2>`
+  if (D.decisioni.length) h += `<div class="meta">decisioni</div>${D.decisioni.slice(0, 6).map(d => `<div class="riga">${esc(d.cosa)} <span style="opacity:.5">${esc(d.stato)}${d.esito ? ` · ${esc(d.esito)}` : ''}</span></div>`).join('')}`
+  if (D.cantieri.length) h += `<div class="meta" style="margin-top:14px">cantieri</div>${D.cantieri.map(c => `<div class="riga">${esc(c.cosa)}<br><span style="opacity:.55">${c.passi.map(p => `${esc(p.testo)} (${esc(p.dove)}, ${esc(p.stato)})`).join(' · ')}</span></div>`).join('')}`
+  if (D.officina.length) h += `<div class="meta" style="margin-top:14px">l'officina: i generatori scritti dalla città</div>${D.officina.map(o => `<div class="riga">${esc(o.nome)} <span style="opacity:.5">di ${esc(o.autore)}</span><br><span class="mono" style="font-size:11px;opacity:.6">${esc(o.testo)}</span></div>`).join('')}`
+  return h
+}
+function schedaOss() {
+  const O = D.osservatorio; if (!O) return ''
+  return `<div class="meta">l'osservatorio · ${O.campioni} mondi misurati</div><h2>La biblioteca degli universi</h2><p>La chimica, l'astronoma, l'astrofisico e la filosofa della scienza sfogliano il simulatore di universi: misurano mondi, mettono alla prova ipotesi, portano in piazza le scoperte. I luoghi che trovano diventano pattern nelle tavole.</p>
+  <div class="meta" style="margin-top:14px">scoperte</div>${O.scoperte.map(s => `<div class="riga"><b>mondo ${s.n}</b> <span style="opacity:.55">(${esc(nomeDi(s.chi))})</span><br>${esc(s.testo)}</div>`).join('')}
+  ${O.ipotesi.length ? `<div class="meta" style="margin-top:14px">ipotesi messe alla prova</div>${O.ipotesi.map(h => `<div class="riga">${h.stato === 'regge' ? 'regge' : 'cade'} · ${esc(h.testo)} <span style="opacity:.5">fiducia ${Math.round(h.fiducia * 100)}%</span></div>`).join('')}` : ''}`
+}
+function schedaVerbale() {
+  const G = D.giornate[0]; if (!G) return '<p>La città è appena nata.</p>'
+  let h = `<div class="meta">il verbale · giornata ${G.cittaGiorno}</div><h2>Cosa si sono detti oggi</h2>`, fase = ''
+  for (const b of G.verbale) { if (b.fase !== fase) { fase = b.fase; h += `<div class="meta" style="margin-top:14px">${esc(fase)}</div>` } h += `<div class="riga"><b>${esc(nomeDi(b.chi))}</b> ${esc(b.testo)}</div>` }
+  return h
+}
+document.getElementById('apri').onclick = () => scheda(schedaVerbale())
+
+// ── muoversi: volare verso una sala, toccare ─────────────────────────────────────────────────────────────
+let volo = null
+function vola(dove, guarda) { volo = { da: cam.position.clone(), a: dove, tda: ctl.target.clone(), ta: guarda, t0: performance.now() }; ctl.autoRotate = false }
+function vaiA(s) {
+  // la distanza giusta perché la sala entri tutta nello spazio libero (a sinistra la scheda non c'è, a destra sì)
+  const pav = s.s.disposizione === 'pavimento', libero = (innerWidth - Math.min(470, innerWidth * 0.4)) / innerWidth
+  const fov = cam.fov * Math.PI / 180, vert = 2 * Math.tan(fov / 2), oriz = vert * cam.aspect * libero
+  const dist = Math.max((s.larga + 16) / oriz, (s.alta + 16) / vert) * 1.08
+  const centro = s.g.localToWorld(new THREE.Vector3(0, pav ? 0 : s.alta * 0.5, 0))
+  const dove = pav ? s.g.localToWorld(new THREE.Vector3(0, dist * 0.85, dist * 0.55)) : s.g.localToWorld(new THREE.Vector3(0, s.alta * 0.5 + dist * 0.08, dist))
+  // la scheda copre la destra: il punto guardato si sposta a destra, così la sala finisce nel centro dello spazio libero
+  const destra = new THREE.Vector3().subVectors(centro, dove).cross(new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(oriz * dist * (1 - libero) * 0.5 / libero * 0.9)
+  vola(dove.clone().add(destra), centro.clone().add(destra))
+  scheda(schedaSala(s))
+  for (const b of ind.querySelectorAll('button')) b.classList.toggle('qui', b.dataset.q === String(s.q.id))
+}
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2()
 let giu = null
-cv.addEventListener('pointerdown', e => { giu = [e.clientX, e.clientY] })
+cv.addEventListener('pointerdown', e => { giu = [e.clientX, e.clientY]; volo = null; ctl.autoRotate = false })
 cv.addEventListener('pointerup', e => {
   if (!giu || Math.hypot(e.clientX - giu[0], e.clientY - giu[1]) > 6) return
-  const o = colpito(e); if (!o) { scheda.style.display = 'none'; return }
+  mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(mouse, cam)
+  const o = ray.intersectObjects(cliccabili, false)[0]?.object; if (!o) return
   const u = o.userData
-  if (u.tipo === 'tavola') scheda.innerHTML = `${u.p.img ? `<img src="img/${u.p.id}.jpg" alt="">` : ''}${esc(u.p.t)}<br><span style="opacity:.55">giorno ${u.p.g} · interesse ${Math.round((u.p.i ?? 0) * 100)}%</span><br><a href="giorni/${u.p.g}.html#${u.p.id}">la sua giornata →</a>`
-  else if (u.tipo === 'nota') scheda.innerHTML = `<span style="opacity:.55">${esc(nomeDi(u.a.chi))}, giorno ${u.a.giorno} della città</span><br>${esc(u.a.testo)}`
-  else if (u.a) scheda.innerHTML = `${esc(u.a.nome)} <span style="opacity:.55">· ${esc(u.a.carica)}</span><br>${u.a.n ? `${u.a.n} tavole nel suo insieme` : 'abita la piazza'}`
-  scheda.style.display = 'block'
+  if (u.tipo === 'tavola') { scheda(schedaTavola(u.p, u.mostra ? `<p style="opacity:.6">In mostra: ${esc(u.mostra.perche)}</p>` : '')); const w = o.getWorldPosition(new THREE.Vector3()), n = new THREE.Vector3(0, 0, 1).applyQuaternion(o.getWorldQuaternion(new THREE.Quaternion())); vola(w.clone().add(n.multiplyScalar(45)).add(new THREE.Vector3(0, 4, 0)), w) }
+  else if (u.a) scheda(`<div class="meta">${esc(u.a.carica)}</div><h2>${esc(u.a.nome)}</h2><p>${u.a.n ? `${u.a.n} tavole nel suo insieme.` : 'Abita la piazza.'}</p>`)
 })
 
-// ── il tempo ─────────────────────────────────────────────────────────────────────────────────────────────
-const t0 = performance.now(), lento = matchMedia('(prefers-reduced-motion: reduce)').matches
-const guardano = []; scena.traverse(o => { if (o.userData?.guarda) guardano.push(o) })
+// ── avvio: dall'alto sulla piazza, poi la città gira piano finché qualcuno non la tocca ───────────────────
+cam.position.copy(P).add(new THREE.Vector3(0, 560, 260)); ctl.target.copy(P).add(new THREE.Vector3(0, 10, 0)); ctl.autoRotate = true; ctl.autoRotateSpeed = 0.15
+const v3 = new THREE.Vector3()
 function giro() {
-  const t = (performance.now() - t0) / 1000
-  for (const m of ologrammi) m.uniforms.t.value = t
-  for (const p of passanti) {
-    if (!p.curva) continue
-    const u = lento ? p.fase : (p.a.tipo === 'figura' ? (t * p.v * 2 + p.fase) % 1 : Math.sin((t * p.v + p.fase) * Math.PI * 2) * 0.5 + 0.5)
-    const q = p.curva.getPointAt(u), y = p.alt + Math.sin(t * 0.8 + p.fase * 9) * 3
-    p.g.position.set(q.x, y, q.z)
-    // la scia: i punti appena passati sulla stessa curva (non dipende da quanti fotogrammi riesce a fare il computer)
-    const arr = p.scia.attributes.position.array, dir = Math.cos((t * p.v + p.fase) * Math.PI * 2) >= 0 || p.a.tipo === 'figura' ? 1 : -1
-    for (let i = 0; i < p.N; i++) { const uu = Math.min(1, Math.max(0, u - dir * i * 0.0018)), qq = p.curva.getPointAt(p.a.tipo === 'figura' ? ((uu % 1) + 1) % 1 : uu); arr[i * 3] = qq.x; arr[i * 3 + 1] = p.alt + Math.sin((t - i * 0.05) * 0.8 + p.fase * 9) * 3; arr[i * 3 + 2] = qq.z }
-    p.scia.attributes.position.needsUpdate = true
+  const t = performance.now() / 1000
+  cieloMat.uniforms.t.value = t
+  if (volo) { const k = Math.min(1, (performance.now() - volo.t0) / 1400), e = k * k * (3 - 2 * k); cam.position.lerpVectors(volo.da, volo.a, e); ctl.target.lerpVectors(volo.tda, volo.ta, e); if (k >= 1) volo = null }
+  for (const p of passanti) { const u = Math.sin((t * p.v + p.fase) * Math.PI * 2) * 0.5 + 0.5, q = p.curva.getPointAt(u); p.g.position.set(q.x, p.alt + Math.sin(t * 0.7 + p.fase * 9) * 2, q.z) }
+  ctl.update(); comp.render()
+  // le etichette seguono la scena; spariscono quando sono dietro o troppo lontane
+  const occupati = []
+  const ordine = etichette.map(e => [e, cam.position.distanceTo(e.p)]).sort((a, b) => a[1] - b[1])
+  for (const [e, d] of ordine) {
+    v3.copy(e.p); v3.project(cam)
+    let vis = v3.z < 1 && d < e.lontano && Math.abs(v3.x) < 1.1 && Math.abs(v3.y) < 1.1
+    if (vis) { const x = (v3.x * 0.5 + 0.5) * innerWidth, y = (-v3.y * 0.5 + 0.5) * innerHeight, w = e.el.offsetWidth || 160, h = e.el.offsetHeight || 34, r = e.el.classList.contains('sala') ? [x, y, x + w, y + h] : [x - w / 2, y - h, x + w / 2, y]; if (r[0] < 270 || occupati.some(o => r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1])) vis = false; else occupati.push(r) }
+    e.el.style.opacity = vis ? String(Math.min(1, (e.lontano - d) / (e.lontano * 0.3))) : '0'
+    e.el.style.pointerEvents = vis && e.el.classList.contains('sala') ? 'auto' : 'none'
+    if (vis) e.el.style.transform = `translate(${(v3.x * 0.5 + 0.5) * innerWidth}px,${(-v3.y * 0.5 + 0.5) * innerHeight}px) ${e.el.classList.contains('sala') ? '' : 'translate(-50%,-100%)'}`
   }
-  for (const o of guardano) o.lookAt(cam.position.x, o.position.y, cam.position.z)
-  ctl.update(); comp.render(); requestAnimationFrame(giro)
+  requestAnimationFrame(giro)
 }
 giro()
 window.__citta = true

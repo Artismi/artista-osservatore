@@ -35,25 +35,38 @@ export function scriviCitta(MEM, C, img, s) {
 <title>${esc(nome)} — ${esc(s?.nome ?? '')}</title>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/"}}</script>
 <style>
-html,body{margin:0;height:100%;overflow:hidden;background:#050608;color:#e9ecf1;font:12px/1.5 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.02em}
+html,body{margin:0;height:100%;overflow:hidden;background:#06070a;color:#e8e6e1;font:13px/1.5 'Inter','Helvetica Neue',system-ui,sans-serif}
 canvas#mondo{position:fixed;inset:0;width:100vw;height:100vh;display:block}
-header{position:fixed;left:22px;top:18px;z-index:5;pointer-events:none;text-transform:uppercase}header *{pointer-events:auto}
-header h1{margin:0;font:300 20px/1.2 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.32em}
-header .sotto{opacity:.55;font-size:11px;letter-spacing:.18em}
-header nav{margin-top:10px}header nav a{color:#e9ecf1;opacity:.6;text-decoration:none;margin-right:14px;font-size:11px;letter-spacing:.18em}header nav a:hover{opacity:1}
-#pannello{position:fixed;right:0;top:0;bottom:0;width:min(360px,92vw);overflow:auto;background:rgba(8,10,14,.72);backdrop-filter:blur(14px);border-left:1px solid rgba(255,255,255,.12);padding:18px 20px;z-index:4;transition:transform .35s}
-#pannello.chiuso{transform:translateX(100%)}
-#pannello h2{font-weight:400;font-size:10px;letter-spacing:.3em;text-transform:uppercase;opacity:.6;margin:22px 0 8px;border-top:1px solid rgba(255,255,255,.12);padding-top:10px}
-#pannello .b{margin:0 0 8px;opacity:.88}#pannello .chi{color:#9fe3ff}#pannello .fase{opacity:.4;font-size:10px;letter-spacing:.25em;text-transform:uppercase;margin-top:12px}
-#pannello code{font-size:10px;opacity:.6;word-break:break-word}
-#apri{position:fixed;right:16px;bottom:16px;z-index:6;font:11px 'JetBrains Mono',monospace;letter-spacing:.2em;text-transform:uppercase;background:transparent;color:#e9ecf1;border:1px solid rgba(255,255,255,.35);padding:8px 12px;cursor:pointer}
-#scheda{position:fixed;left:22px;bottom:22px;z-index:6;max-width:min(380px,80vw);background:rgba(8,10,14,.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.18);padding:12px;display:none}
-#scheda img{width:100%;display:block;margin-bottom:8px}#scheda a{color:#9fe3ff}
-#etichetta{position:fixed;pointer-events:none;z-index:7;border:1px solid rgba(255,255,255,.4);background:rgba(5,6,8,.75);padding:3px 7px;font-size:11px;display:none;max-width:320px}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+header{position:fixed;left:24px;top:20px;z-index:6;max-width:420px}
+header h1{margin:0 0 4px;font:500 22px/1.15 'Inter',system-ui,sans-serif;letter-spacing:.01em}
+header p{margin:0;opacity:.62;font-size:12px}
+header nav{margin-top:10px}header nav a{color:#e8e6e1;opacity:.55;text-decoration:none;margin-right:14px;font-size:11px;letter-spacing:.12em;text-transform:uppercase}header nav a:hover{opacity:1}
+#indice{position:fixed;left:0;top:118px;bottom:0;width:250px;padding:0 0 20px 24px;overflow:auto;z-index:6;scrollbar-width:thin;background:linear-gradient(90deg,rgba(6,7,10,.92) 70%,rgba(6,7,10,0))}
+header{background:linear-gradient(180deg,rgba(6,7,10,.85),rgba(6,7,10,0));padding-bottom:10px}
+#indice h3{font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.22em;text-transform:uppercase;opacity:.45;margin:16px 0 8px}
+#indice button{display:block;width:100%;text-align:left;background:none;border:0;border-left:1px solid rgba(255,255,255,.14);color:#e8e6e1;padding:5px 10px;cursor:pointer;font:13px/1.3 'Inter',system-ui,sans-serif;opacity:.78}
+#indice button:hover,#indice button.qui{opacity:1;border-left-color:#e8e6e1}
+#indice button small{display:block;opacity:.5;font-size:11px}
+.et{position:fixed;left:0;top:0;z-index:5;pointer-events:none;transform:translate(-50%,-100%);white-space:nowrap;transition:opacity .25s}
+.et .t{font:500 15px/1.2 'Inter',system-ui,sans-serif;letter-spacing:.01em}
+.et .s{font-size:11px;opacity:.6;margin-top:2px}
+.et.sala{pointer-events:auto;cursor:pointer;border-top:1px solid rgba(232,230,225,.5);padding-top:6px;text-align:left;transform:translate(-50%,0)}
+.et.nota{font:italic 15px/1.3 'Segoe Print','Bradley Hand','Comic Neue',cursive;color:#f1d9a8;white-space:normal;width:220px;opacity:.9}
+.et.nota b{font-style:normal;font-family:'Inter',system-ui,sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase;opacity:.7;display:block}
+#scheda{position:fixed;right:24px;top:24px;bottom:24px;width:min(420px,90vw);overflow:auto;z-index:7;background:rgba(12,13,17,.9);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.1);padding:22px;display:none}
+#scheda img{width:100%;display:block;margin:0 0 14px}
+#scheda h2{font:500 19px/1.25 'Inter',system-ui,sans-serif;margin:0 0 6px}
+#scheda .meta{opacity:.5;font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
+#scheda p{opacity:.85}#scheda a{color:#f1d9a8}
+#scheda .chiudi{position:absolute;right:14px;top:10px;background:none;border:0;color:#e8e6e1;font-size:20px;cursor:pointer;opacity:.6}
+#scheda .riga{border-top:1px solid rgba(255,255,255,.1);padding:8px 0}
+#apri{position:fixed;right:24px;bottom:22px;z-index:6;font:500 11px 'JetBrains Mono',monospace;letter-spacing:.18em;text-transform:uppercase;background:rgba(12,13,17,.7);color:#e8e6e1;border:1px solid rgba(255,255,255,.25);padding:9px 13px;cursor:pointer}
+#aiuto{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:6;font-size:11px;opacity:.45;letter-spacing:.06em}
 </style></head><body>
 <canvas id="mondo"></canvas>
-<header><h1>${esc(nome)}</h1><span class="sotto">la città interna di ${esc(s?.nome ?? '')} · giorno ${C.giorno}</span><br><nav><a href="index.html">parete</a><a href="archivio.html">opere</a><a href="diario.html">pensieri</a></nav></header>
-<aside id="pannello"></aside><button id="apri">verbale</button><div id="scheda"></div><div id="etichetta"></div>
+<header><h1>${esc(nome)}</h1><p>La città interna di ${esc(s?.nome ?? '')}: le sue tavole raccolte in sale secondo quello che hanno in comune, allestite dagli abitanti che le curano. Giorno ${C.giorno}.</p><nav><a href="index.html">parete</a><a href="archivio.html">opere</a><a href="diario.html">pensieri</a></nav></header>
+<nav id="indice"></nav><div id="etichette"></div><aside id="scheda"></aside><button id="apri">il verbale di oggi</button><div id="aiuto">trascina per girare · rotella per avvicinarti · tocca una sala o una tavola</div>
 <script type="module" src="citta.js"></script>
 </body></html>`
   writeFileSync(join(MEM, 'citta.html'), html)
