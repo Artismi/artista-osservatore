@@ -17,7 +17,9 @@ function vendor(MEM) {
   if (!base) { try { base = dirname(dirname(createRequire(import.meta.url).resolve('three'))) } catch { /* niente */ } }
   if (!base) return false
   for (const f of ['three.module.min.js', 'three.core.min.js']) copyFileSync(join(base, 'build', f), join(dove, f))
-  copyFileSync(join(base, 'examples/jsm/controls/OrbitControls.js'), join(dove, 'OrbitControls.js'))
+  for (const f of ['controls/OrbitControls.js', 'postprocessing/EffectComposer.js', 'postprocessing/Pass.js', 'postprocessing/RenderPass.js', 'postprocessing/ShaderPass.js', 'postprocessing/MaskPass.js', 'postprocessing/UnrealBloomPass.js', 'postprocessing/OutputPass.js', 'shaders/CopyShader.js', 'shaders/LuminosityHighPassShader.js', 'shaders/OutputShader.js']) {
+    mkdirSync(join(dove, dirname(f)), { recursive: true }); copyFileSync(join(base, 'examples/jsm', f), join(dove, f))
+  }
   return true
 }
 
@@ -33,24 +35,24 @@ export function scriviCitta(MEM, C, img, s) {
 <title>${esc(nome)} — ${esc(s?.nome ?? '')}</title>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/"}}</script>
 <style>
-:root{--bg:${st.bg ?? '#ebe6dc'};--ink:${st.ink ?? '#121212'};--acc:${st.acc ?? '#e3361b'}}
-html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font:14px/1.45 'JetBrains Mono',ui-monospace,monospace}
+html,body{margin:0;height:100%;overflow:hidden;background:#050608;color:#e9ecf1;font:12px/1.5 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.02em}
 canvas#mondo{position:fixed;inset:0;width:100vw;height:100vh;display:block}
-header{position:fixed;left:16px;top:12px;z-index:5;pointer-events:none}header *{pointer-events:auto}
-header h1{margin:0;font:700 26px/1.1 ${st.titoli ? `'${st.titoli}',` : ''}system-ui,sans-serif;background:var(--bg);display:inline-block;padding:2px 8px}
-header .sotto{background:var(--bg);display:inline-block;padding:2px 8px;margin-top:4px}
-header nav a{color:var(--ink);background:var(--bg);padding:2px 6px;margin-right:4px}
-#pannello{position:fixed;right:0;top:0;bottom:0;width:min(380px,92vw);overflow:auto;background:color-mix(in srgb,var(--bg) 92%,transparent);border-left:1px solid var(--ink);padding:14px 16px;z-index:4;transform:translateX(0);transition:transform .3s}
+header{position:fixed;left:22px;top:18px;z-index:5;pointer-events:none;text-transform:uppercase}header *{pointer-events:auto}
+header h1{margin:0;font:300 20px/1.2 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.32em}
+header .sotto{opacity:.55;font-size:11px;letter-spacing:.18em}
+header nav{margin-top:10px}header nav a{color:#e9ecf1;opacity:.6;text-decoration:none;margin-right:14px;font-size:11px;letter-spacing:.18em}header nav a:hover{opacity:1}
+#pannello{position:fixed;right:0;top:0;bottom:0;width:min(360px,92vw);overflow:auto;background:rgba(8,10,14,.72);backdrop-filter:blur(14px);border-left:1px solid rgba(255,255,255,.12);padding:18px 20px;z-index:4;transition:transform .35s}
 #pannello.chiuso{transform:translateX(100%)}
-#pannello h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin:18px 0 6px}
-#pannello .b{margin:0 0 7px}#pannello .chi{font-weight:700}#pannello .fase{opacity:.55;font-size:11px;text-transform:uppercase;margin-top:10px}
-#apri{position:fixed;right:12px;bottom:12px;z-index:6;font:inherit;background:var(--ink);color:var(--bg);border:0;padding:8px 12px;cursor:pointer}
-#scheda{position:fixed;left:16px;bottom:16px;z-index:6;max-width:min(420px,80vw);background:var(--bg);border:1px solid var(--ink);padding:10px;display:none}
-#scheda img{width:100%;display:block;margin-bottom:6px}
-#etichetta{position:fixed;pointer-events:none;z-index:7;background:var(--ink);color:var(--bg);padding:2px 6px;font-size:12px;display:none;max-width:320px}
+#pannello h2{font-weight:400;font-size:10px;letter-spacing:.3em;text-transform:uppercase;opacity:.6;margin:22px 0 8px;border-top:1px solid rgba(255,255,255,.12);padding-top:10px}
+#pannello .b{margin:0 0 8px;opacity:.88}#pannello .chi{color:#9fe3ff}#pannello .fase{opacity:.4;font-size:10px;letter-spacing:.25em;text-transform:uppercase;margin-top:12px}
+#pannello code{font-size:10px;opacity:.6;word-break:break-word}
+#apri{position:fixed;right:16px;bottom:16px;z-index:6;font:11px 'JetBrains Mono',monospace;letter-spacing:.2em;text-transform:uppercase;background:transparent;color:#e9ecf1;border:1px solid rgba(255,255,255,.35);padding:8px 12px;cursor:pointer}
+#scheda{position:fixed;left:22px;bottom:22px;z-index:6;max-width:min(380px,80vw);background:rgba(8,10,14,.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.18);padding:12px;display:none}
+#scheda img{width:100%;display:block;margin-bottom:8px}#scheda a{color:#9fe3ff}
+#etichetta{position:fixed;pointer-events:none;z-index:7;border:1px solid rgba(255,255,255,.4);background:rgba(5,6,8,.75);padding:3px 7px;font-size:11px;display:none;max-width:320px}
 </style></head><body>
 <canvas id="mondo"></canvas>
-<header><h1>${esc(nome)}</h1><br><span class="sotto">la città interna di ${esc(s?.nome ?? '')} · giorno ${C.giorno}</span><br><nav><a href="index.html">parete</a><a href="archivio.html">opere</a><a href="diario.html">pensieri</a></nav></header>
+<header><h1>${esc(nome)}</h1><span class="sotto">la città interna di ${esc(s?.nome ?? '')} · giorno ${C.giorno}</span><br><nav><a href="index.html">parete</a><a href="archivio.html">opere</a><a href="diario.html">pensieri</a></nav></header>
 <aside id="pannello"></aside><button id="apri">verbale</button><div id="scheda"></div><div id="etichetta"></div>
 <script type="module" src="citta.js"></script>
 </body></html>`
