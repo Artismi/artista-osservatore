@@ -1,7 +1,7 @@
 // La città interna come paesaggio: un diorama della conoscenza. Le colline sono dove le tavole si accumulano, il terreno
 // coltivato (il giardino) avanza giorno dopo giorno come una muffa verso dove le tavole sono più fitte, le strade nascono
 // tra le sale più legate come le reti di una muffa che collega il cibo. Le sale sono radure di tavole in piedi, disposte
-// dal curatore che le abita. In piazza cresce l'albero della conoscenza. Gli abitanti sono le figure di Porto Vecchio.
+// dal curatore che le abita. In piazza la tavola più amata, resa in rilievo. Niente modelli: solo le immagini e il codice che fa il suolo. Gli abitanti sono le figure di Porto Vecchio.
 // Nessun edificio: le architetture sono metafore della crescita, non oggetti. Motore: il three di Porto Vecchio (globale).
 (async function () {
   'use strict'
@@ -48,7 +48,7 @@
   cv.addEventListener('wheel', e => { e.preventDefault(); O.auto = false; volo = null; O.dist = Math.min(2600, Math.max(40, O.dist * Math.exp(e.deltaY * 0.0012))) }, { passive: false })
   const metti = () => {
     O.yaw += O.v.yaw; O.v.yaw *= 0.85
-    O.t.x = Math.max(-LX / 2, Math.min(LX / 2, O.t.x)); O.t.z = Math.max(-LZ / 2, Math.min(LZ / 2, O.t.z)); O.t.y = 20
+    O.t.x = Math.max(-LX / 2 - 600, Math.min(LX / 2 + 600, O.t.x)); O.t.z = Math.max(-LZ / 2 - 600, Math.min(LZ / 2 + 600, O.t.z)); if (typeof occhio !== 'undefined') occhio.value.set(O.t.x, O.t.z, O.dist * Math.max(1, innerWidth / innerHeight) * 0.6); O.t.y = 20
     cam.position.set(O.t.x + 2000 * Math.cos(O.pitch) * Math.sin(O.yaw), O.t.y + 2000 * Math.sin(O.pitch), O.t.z + 2000 * Math.cos(O.pitch) * Math.cos(O.yaw)); cam.lookAt(O.t); inquadra()
   }
 
@@ -67,8 +67,9 @@
     return Math.pow(d / dmax, 0.7) * 40 + rum(x, z) * 0.6 + 6
   }
   function altezza(x, z) {
-    if (Math.abs(x) > LX / 2 || Math.abs(z) > LZ / 2) return 0
-    let h = suoloNudo(x, z)
+    // la superficie non finisce: fuori da quello che hanno costruito torna lentamente una pianura che ondeggia
+    const fuori = Math.max(0, Math.abs(x) - LX / 2, Math.abs(z) - LZ / 2), lontano = Math.min(1, fuori / 400)
+    let h = suoloNudo(x, z) * (1 - lontano) + (rum(x * 0.6, z * 0.6) * 1.6 + 8) * lontano
     for (const t of terrazze) { const d = Math.hypot(x - t.x, z - t.z); if (d < t.r + 8) { const k = 1 - morbido(t.r, t.r + 8, d); h = h * (1 - k) + t.h * k } }
     return h
   }
@@ -82,20 +83,22 @@
   const tStrade = document.createElement('canvas'); tStrade.width = tStrade.height = TX
   { const g = tStrade.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, TX, TX); g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineJoin = 'round'; for (const s of strade) { g.lineWidth = 3 + Math.min(6, Math.log(1 + (s.c.dati?.fili ?? 1))); g.beginPath(); curvaStrada(s).forEach(([x, y], k) => k ? g.lineTo(x / 1000 * TX, y / 1000 * TX) : g.moveTo(x / 1000 * TX, y / 1000 * TX)); g.stroke() } }
   {
-    const N = 220, geo = new THREE.PlaneGeometry(LX, LZ, Math.round(N * LX / LATO), Math.round(N * LZ / LATO)); geo.rotateX(-Math.PI / 2)
+    const AMPIO = LATO + 2400, geo = new THREE.PlaneGeometry(AMPIO, AMPIO, 520, 520); geo.rotateX(-Math.PI / 2)
     const pos = geo.attributes.position; for (let i = 0; i < pos.count; i++) pos.setY(i, altezza(pos.getX(i), pos.getZ(i))); geo.computeVertexNormals()
     const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 })
+    var occhio = { value: new THREE.Vector3() }
     const gT = new THREE.CanvasTexture(tGiardino), sT = new THREE.CanvasTexture(tStrade)
     mat.onBeforeCompile = sh => {
-      sh.uniforms.giardino = { value: gT }; sh.uniforms.strade = { value: sT }
+      sh.uniforms.giardino = { value: gT }; sh.uniforms.strade = { value: sT }; sh.uniforms.occhio = occhio
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvMondo = (modelMatrix*vec4(position,1.)).xyz;')
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        varying vec3 vMondo; uniform sampler2D giardino; uniform sampler2D strade;
+        varying vec3 vMondo; uniform sampler2D giardino; uniform sampler2D strade; uniform vec3 occhio;
         float hh(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
         float nn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hh(i),hh(i+vec2(1,0)),f.x),mix(hh(i+vec2(0,1)),hh(i+vec2(1,1)),f.x),f.y); }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
         vec2 uv = vec2((vMondo.x / ${S.toFixed(3)} + ${cxT.toFixed(2)}) / 1000., (vMondo.z / ${S.toFixed(3)} + ${cyT.toFixed(2)}) / 1000.);
-        float h = vMondo.y, gr = texture2D(giardino, uv).r, st = texture2D(strade, uv).r;
+        float dentro = step(0., uv.x) * step(uv.x, 1.) * step(0., uv.y) * step(uv.y, 1.);
+        float h = vMondo.y, gr = texture2D(giardino, uv).r * dentro, st = texture2D(strade, uv).r * dentro;
         float n = nn(vMondo.xz*0.05)*.6 + nn(vMondo.xz*0.2)*.4;
         // la terra nuda: strati di roccia e argilla secondo la quota (le curve di livello di un modello geologico)
         vec3 terra = mix(vec3(.24,.22,.20), vec3(.36,.33,.29), smoothstep(5., 60., h));
@@ -106,49 +109,24 @@
         vec3 c = mix(terra, verde, smoothstep(.25,.6,gr));
         c = mix(c, vec3(.55,.52,.47), smoothstep(.25,.65,st));
         diffuseColor.rgb = c;`)
+        // l'orizzonte non c'è: la superficie sfuma nel buio attorno a dove guardi, così sembra continuare per sempre
+        .replace('#include <fog_fragment>', `#include <fog_fragment>
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(.102,.110,.125), smoothstep(occhio.z * .55, occhio.z * 1.25, length(vMondo.xz - occhio.xy)));`)
     }
     const terra = new THREE.Mesh(geo, mat); terra.receiveShadow = true; scena.add(terra)
-    // i fianchi del diorama: la sezione del terreno, a strati
-    const fianchi = new THREE.Group(), strati = [0x2e2925, 0x3d362f, 0x4a4238, 0x3a332c, 0x57503f]
-    for (let s = 0; s < 4; s++) {
-      const n = 120, pts = []; for (let k = 0; k <= n; k++) { const t = k / n; const [x, z] = s === 0 ? [-LX / 2 + t * LX, LZ / 2] : s === 1 ? [LX / 2, LZ / 2 - t * LZ] : s === 2 ? [LX / 2 - t * LX, -LZ / 2] : [-LX / 2, -LZ / 2 + t * LZ]; pts.push([x, z]) }
-      for (let l = 0; l < strati.length; l++) {
-        const geo2 = new THREE.BufferGeometry(), v = [], y0 = -60 + l * 12, y1 = y0 + 12
-        for (let k = 0; k < n; k++) { const [x0, z0] = pts[k], [x1, z1] = pts[k + 1]; v.push(x0, y0 - 60 * (l === 0), z0, x1, y0 - 60 * (l === 0), z1, x1, y1, z1, x0, y0 - 60 * (l === 0), z0, x1, y1, z1, x0, y1, z0) }
-        geo2.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); geo2.computeVertexNormals()
-        fianchi.add(new THREE.Mesh(geo2, new THREE.MeshStandardMaterial({ color: strati[l], roughness: 1, side: THREE.DoubleSide })))
-      }
-    }
-    scena.add(fianchi)
     scena.background = new THREE.Color(0x1a1c20)
   }
 
-  // ── il giardino dell'Eden: alberelli e cespugli sul terreno coltivato (più ce n'è, più è cresciuto) ──────────
-  {
-    const G = 48, verdi = [0x2f5a2a, 0x3d6b30, 0x4f7d38, 0x2a4a2e, 0x6a8a3a, 0x7a6a3a]
-    const cesp = new THREE.IcosahedronGeometry(1, 0), mats = verdi.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true }))
-    const tronco = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 1 })
-    for (const k of (K.coltivato ?? [])) {
-      const i = k % G, j = Math.floor(k / G), n = 1 + Math.floor(caso() * 3)
-      for (let t = 0; t < n; t++) {
-        const x = X((i + caso()) / G * 1000), z = Z((j + caso()) / G * 1000), y = altezza(x, z)
-        if (Math.abs(x) > LX / 2 - 4 || Math.abs(z) > LZ / 2 - 4) continue
-        if (caso() < 0.35) { const h = 6 + caso() * 10, tr = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, h, 5), tronco); tr.position.set(x, y + h / 2, z); tr.castShadow = true; scena.add(tr); const ch = new THREE.Mesh(cesp, mats[Math.floor(caso() * mats.length)]); ch.scale.setScalar(3 + caso() * 3); ch.position.set(x, y + h + 1, z); ch.castShadow = true; scena.add(ch) }
-        else { const b = new THREE.Mesh(cesp, mats[Math.floor(caso() * mats.length)]); b.scale.setScalar(1.2 + caso() * 2); b.position.set(x, y + 1, z); b.castShadow = true; scena.add(b) }
-      }
-    }
-  }
-  // ── l'albero della conoscenza, in piazza: i rami sono i quartieri, le foglie le tavole migliori ──────────────
   const PZ = new THREE.Vector3(X(D.piazza.x), 0, Z(D.piazza.y)); PZ.y = altezza(PZ.x, PZ.z)
-  {
-    const legno = new THREE.MeshStandardMaterial({ color: 0x5a4530, roughness: 0.95 })
-    const ramo = (da, dir, lung, sp, liv) => {
-      const a = da.clone().addScaledVector(dir, lung), m = new THREE.Mesh(new THREE.CylinderGeometry(sp * 0.7, sp, lung, 6), legno)
-      m.position.copy(da.clone().lerp(a, 0.5)); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize()); m.castShadow = true; scena.add(m)
-      if (liv < 4) for (let k = 0; k < 3; k++) { const d2 = dir.clone().add(new THREE.Vector3(caso() - 0.5, 0.2 + caso() * 0.4, caso() - 0.5).multiplyScalar(1.3)).normalize(); ramo(a, d2, lung * 0.72, sp * 0.62, liv + 1) }
-      else { const f = new THREE.Mesh(new THREE.IcosahedronGeometry(3 + caso() * 3, 0), new THREE.MeshStandardMaterial({ color: [0x4f7d38, 0x6a8a3a, 0x8a9a3a, 0x3d6b30][Math.floor(caso() * 4)], roughness: 0.85, flatShading: true })); f.position.copy(a); f.castShadow = true; scena.add(f) }
-    }
-    ramo(PZ.clone(), new THREE.Vector3(0, 1, 0), 30, 4.5, 0)
+  // ── i disegni resi 3d dal motore: una tavola diventa rilievo, la luce dell'immagine diventa altezza ──────────
+  function rilievo(id, w, h, alto) {
+    const geo = new THREE.PlaneGeometry(w, h, 96, 120), mat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.8, side: THREE.DoubleSide }), m = new THREE.Mesh(geo, mat)
+    const im = new Image(); im.onload = () => {
+      const cv = document.createElement('canvas'); cv.width = 97; cv.height = 121; const g = cv.getContext('2d'); g.filter = 'blur(1px)'; g.drawImage(im, 0, 0, 97, 121); const px = g.getImageData(0, 0, 97, 121).data, pos = geo.attributes.position
+      for (let i = 0; i < pos.count; i++) { const k = i * 4, l = (px[k] * 0.3 + px[k + 1] * 0.59 + px[k + 2] * 0.11) / 255; pos.setZ(i, l * alto) }
+      pos.needsUpdate = true; geo.computeVertexNormals(); const t = new THREE.Texture(im); t.encoding = THREE.sRGBEncoding; t.needsUpdate = true; mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true
+    }; im.src = `img/${id}.jpg`
+    m.castShadow = true; m.receiveShadow = true; return m
   }
 
   // ── le sale: radure di tavole in piedi, disposte dal curatore (parete, arco, griglia, sospese, colonna, a terra) ──
@@ -179,7 +157,6 @@
         m.position.set(x, y + 4 + su + h / 2, z); m.rotation.y = verso + rot; if (rovina) m.rotation.z = (caso() - 0.5) * 0.4
         m.castShadow = true
         const retro = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.8, h + 0.8), new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.6, side: THREE.DoubleSide })); retro.position.copy(m.position); retro.rotation.copy(m.rotation); retro.translateZ(-0.2); retro.castShadow = true; scena.add(retro)
-        for (const sx of [-w * 0.35, w * 0.35]) { const g2 = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 4 + su + 1, 5), new THREE.MeshStandardMaterial({ color: 0x2a2a2a })); g2.position.copy(m.position); g2.rotation.y = m.rotation.y; g2.translateX(sx); g2.translateZ(-0.4); g2.position.y = y + (4 + su + 1) / 2; scena.add(g2) }
       }
       scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m)
     })
@@ -196,14 +173,14 @@
     const m = new THREE.Mesh(new THREE.PlaneGeometry(10, 12.5), tavolaMat(p.id)); m.position.set(x, y + 6, z); m.rotation.set(-0.35, caso() * 6.28, (caso() - 0.5) * 0.3); m.castShadow = true; scena.add(m)
     m.userData = { tipo: 'tavola', p, graffito: nomeDi(c.chi) }; cliccabili.push(m)
   }
-  // il monumento: la tavola più amata, grande, accanto all'albero
-  for (const c of costr.filter(c => c.tipo === 'monumento' && c.dati?.tavola)) { const p = posDi.get(c.dati.tavola); if (!p?.img) continue; const x = PZ.x + 46, z = PZ.z + 10, y = altezza(x, z); const m = new THREE.Mesh(new THREE.PlaneGeometry(26, 32.5), tavolaMat(p.id)); m.position.set(x, y + 22, z); m.lookAt(PZ.x, y + 22, PZ.z); m.rotateY(Math.PI); m.castShadow = true; scena.add(m); m.userData = { tipo: 'tavola', p, monumento: true }; cliccabili.push(m) }
-  // i mondi scoperti dall'osservatorio: pietre di luce ai margini, con il loro numero
-  for (const c of costr.filter(c => c.tipo === 'torre')) { const a = c.pos?.angolo ?? caso() * 6.28, x = Math.max(-LX / 2 + 15, Math.min(LX / 2 - 15, PZ.x + Math.cos(a) * LX * 0.45)), z = Math.max(-LZ / 2 + 15, Math.min(LZ / 2 - 15, PZ.z + Math.sin(a) * LZ * 0.45)), y = altezza(x, z); const s = new THREE.Mesh(new THREE.OctahedronGeometry(3.5, 0), new THREE.MeshStandardMaterial({ color: 0xc9b6ff, emissive: 0x6a4ac8, emissiveIntensity: 0.8, roughness: 0.3 })); s.position.set(x, y + 6, z); scena.add(s); etichetta(`<div class="s">un mondo scoperto</div><div class="t" style="font-size:12px">${esc(c.nome)}</div>`, new THREE.Vector3(x, y + 16, z), 700) }
+  // il monumento: la tavola più amata, stesa in piazza e sollevata in rilievo
+  for (const c of costr.filter(c => c.tipo === 'monumento' && c.dati?.tavola)) { const p = posDi.get(c.dati.tavola); if (!p?.img) continue; const m = rilievo(p.id, 40, 50, 9); m.rotation.x = -Math.PI / 2; m.position.set(PZ.x, PZ.y + 1.5, PZ.z); scena.add(m); m.userData = { tipo: 'tavola', p, monumento: true }; cliccabili.push(m) }
+  // i mondi scoperti dall'osservatorio: solo un nome sul suolo, ai margini
+  for (const c of costr.filter(c => c.tipo === 'torre')) { const a = c.pos?.angolo ?? caso() * 6.28, x = Math.max(-LX / 2 + 15, Math.min(LX / 2 - 15, PZ.x + Math.cos(a) * LX * 0.45)), z = Math.max(-LZ / 2 + 15, Math.min(LZ / 2 - 15, PZ.z + Math.sin(a) * LZ * 0.45)), y = altezza(x, z); etichetta(`<div class="s">un mondo scoperto</div><div class="t" style="font-size:12px">${esc(c.nome)}</div>`, new THREE.Vector3(x, y + 16, z), 700) }
   // il guardaroba: un posto in piazza dove si va a cambiarsi (un cerchio a terra e un appendiabiti)
   const GUARD = new THREE.Vector3(PZ.x - 40, 0, PZ.z + 34); GUARD.y = altezza(GUARD.x, GUARD.z)
-  { const g = new THREE.Group(); g.position.copy(GUARD); scena.add(g); const asta = new THREE.MeshStandardMaterial({ color: 0x3a3a3a }); for (const sx of [-6, 6]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 10, 6), asta); p.position.set(sx, 5, 0); g.add(p) } const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 12, 6), asta); tr.rotation.z = Math.PI / 2; tr.position.y = 10; g.add(tr); for (let k = 0; k < 6; k++) { const v = new THREE.Mesh(new THREE.BoxGeometry(1.6, 5, 0.4), new THREE.MeshStandardMaterial({ color: [0xb4281e, 0x2a6ab0, 0xe0a020, 0x3a8a5a, 0xe8e2d4, 0x2a2c32][k] })); v.position.set(-5 + k * 2, 7.2, 0); v.castShadow = true; g.add(v) } etichetta('<div class="t" style="font-size:13px">il guardaroba</div><div class="s">qui ci si cambia</div>', GUARD.clone().add(new THREE.Vector3(0, 18, 0)), 600) }
-  etichetta(`<div class="t">${esc(D.nome ?? 'La città senza nome')}</div><div class="s">la piazza e l'albero · giorno ${D.giorno}</div>`, PZ.clone().add(new THREE.Vector3(0, 75, 0)), 4000)
+  { etichetta('<div class="t" style="font-size:13px">il guardaroba</div><div class="s">qui ci si cambia</div>', GUARD.clone().add(new THREE.Vector3(0, 18, 0)), 600) }
+  etichetta(`<div class="t">${esc(D.nome ?? 'La città senza nome')}</div><div class="s">la piazza · giorno ${D.giorno}</div>`, PZ.clone().add(new THREE.Vector3(0, 75, 0)), 4000)
   // i nomi delle strade
   for (const s of strade) { const nome = K.nomiVie?.[s.c.id]; if (!nome) continue; const pts = curvaStrada(s), [x, y] = pts[20], wx = X(x), wz = Z(y); etichetta(`<div class="s" style="font-style:italic;opacity:.8">${esc(nome)}</div>`, new THREE.Vector3(wx, altezza(wx, wz) + 4, wz), 650) }
 
@@ -233,7 +210,7 @@
   // ── indice e schede ──────────────────────────────────────────────────────────────────────────────────────
   const ind = document.getElementById('indice'), sc = document.getElementById('scheda')
   const recs = sale.slice().sort((a, b) => (b.q?.n ?? 0) - (a.q?.n ?? 0))
-  ind.innerHTML = `<h3>la città</h3><button data-k="piazza">${esc(D.nome ?? 'La città senza nome')}<small>la piazza e l'albero · ${D.abitanti.length} abitanti</small></button><button data-k="cantiere">Come è cresciuta<small>${costr.length} cose fatte dagli abitanti · ${(K.coltivato ?? []).length} campi coltivati</small></button>
+  ind.innerHTML = `<h3>la città</h3><button data-k="piazza">${esc(D.nome ?? 'La città senza nome')}<small>la piazza · ${D.abitanti.length} abitanti</small></button><button data-k="cantiere">Come è cresciuta<small>${costr.length} cose fatte dagli abitanti · ${(K.coltivato ?? []).length} campi coltivati</small></button>
   <h3>le sale</h3>${recs.map(r => `<button data-c="${esc(r.c.id)}">${esc(r.c.nome)}<small>${r.q?.n ?? 0} tavole · ${esc(r.sala?.disposizione ?? '')}${r.c.stato === 'rovina' ? ' · abbandonata' : ''}</small></button>`).join('')}
   ${D.osservatorio ? `<h3>l'osservatorio</h3><button data-k="oss">La biblioteca degli universi<small>${D.osservatorio.campioni} mondi misurati</small></button>` : ''}`
   ind.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.c) vaiA(sale.find(s => s.c.id === b.dataset.c)); else if (b.dataset.k === 'piazza') { vola(PZ.clone(), 240, 0.615); scheda(schedaPiazza()) } else if (b.dataset.k === 'cantiere') { vola(new THREE.Vector3(0, 0, 0), Math.max(LX, LZ) * 1.1, 0.615); scheda(schedaCantiere()) } else if (b.dataset.k === 'oss') scheda(schedaOss()) }
@@ -241,8 +218,8 @@
   function schedaTavola(p, extra = '') { const note = D.annotazioni.filter(a => a.tavola === p.id); return `<img src="img/${p.id}.jpg" alt=""><div class="meta">giorno ${p.g} · interesse ${Math.round((p.i ?? 0) * 100)}%</div><h2>${esc(p.t)}</h2>${D.tavole?.[p.id]?.testo ? `<p>${esc(D.tavole[p.id].testo)}…</p>` : ''}${extra}${note.length ? `<div class="meta" style="margin-top:16px">le note degli abitanti</div>${note.map(n => `<div class="riga"><b>${esc(nomeDi(n.chi))}</b> ${esc(n.testo)}</div>`).join('')}` : ''}<p><a href="giorni/${p.g}.html#${p.id}">la giornata in cui è nata →</a></p>` }
   function schedaSala(r) { const nomeCur = r.sala?.curatore ? nomeDi(r.sala.curatore) : null; const vie = strade.filter(s => s.c.a === r.c.id || s.c.b === r.c.id).map(s => K.nomiVie?.[s.c.id]).filter(Boolean); return `<div class="meta">sala · ${r.q?.n ?? 0} tavole</div><h2>${esc(r.c.nome)}</h2>${r.q ? `<p>Le tavole che parlano di ${esc((r.q.concetti ?? []).join(', '))}.</p>` : ''}${nomeCur ? `<p>La cura ${esc(nomeCur)}: ${esc(r.sala.perche || r.sala.disposizione)}.</p>` : ''}${vie.length ? `<p style="opacity:.7">Ci passano ${vie.map(esc).join(', ')}.</p>` : ''}<div class="meta" style="margin-top:14px">la sua storia</div>${(r.c.storia ?? []).map(h => `<div class="riga">giorno ${h.giorno} · ${esc(nomeDi(h.chi))} ${esc(h.cosa)}</div>`).join('')}<div class="meta" style="margin-top:14px">in sala</div>${(perQ.get(r.c.q) ?? []).sort((a, b) => b.i - a.i).slice(0, 12).map(p => `<div class="riga"><a href="giorni/${p.g}.html#${p.id}">${esc(p.t || 'tavola')}</a> <span style="opacity:.5">giorno ${p.g}</span></div>`).join('')}` }
   function schedaCantiere() { return `<div class="meta">come è cresciuta</div><h2>Nessuno ha il disegno intero</h2><p>Le colline sono dove le tavole si accumulano. Il giardino avanza ogni giorno verso le zone più fitte, come una muffa. Le strade nascono tra le sale più legate. Tutto quello che vedi l'hanno fatto gli abitanti, un pezzo alla volta.</p>${costr.slice().reverse().slice(0, 40).map(c => `<div class="riga"><b>${esc(c.tipo === 'capsula' ? 'sala' : c.tipo)}</b> ${esc(c.nome ?? K.nomiVie?.[c.id] ?? '')} <span style="opacity:.55">${esc((c.storia ?? []).map(h => `g.${h.giorno} ${nomeDi(h.chi)} ${h.cosa}`).join(' · '))}</span></div>`).join('')}` }
-  function schedaPiazza() { const G = D.giornate[0]; let h = `<div class="meta">la piazza · giornata ${G?.cittaGiorno ?? ''}</div><h2>${esc(D.nome ?? 'La città senza nome')}</h2><p>Al centro l'albero della conoscenza. Qui si discute, si vota, si decide.</p>`; if (D.decisioni.length) h += `<div class="meta">decisioni</div>${D.decisioni.slice(0, 6).map(d => `<div class="riga">${esc(d.cosa)} <span style="opacity:.5">${esc(d.stato)}${d.esito ? ` · ${esc(d.esito)}` : ''}</span></div>`).join('')}`; if (D.cantieri.length) h += `<div class="meta" style="margin-top:14px">cantieri</div>${D.cantieri.map(c => `<div class="riga">${esc(c.cosa)}<br><span style="opacity:.55">${c.passi.map(p => `${esc(p.testo)} (${esc(p.dove)}, ${esc(p.stato)})`).join(' · ')}</span></div>`).join('')}`; if (D.officina.length) h += `<div class="meta" style="margin-top:14px">l'officina</div>${D.officina.map(o => `<div class="riga">${esc(o.nome)} <span style="opacity:.5">di ${esc(o.autore)}</span><br><span class="mono" style="font-size:11px;opacity:.6">${esc(o.testo)}</span></div>`).join('')}`; return h }
-  function schedaOss() { const Os = D.osservatorio; if (!Os) return ''; return `<div class="meta">l'osservatorio · ${Os.campioni} mondi misurati</div><h2>La biblioteca degli universi</h2><p>La chimica, l'astronoma, l'astrofisico e la filosofa della scienza sfogliano il simulatore di universi: misurano mondi, mettono alla prova ipotesi, portano in piazza le scoperte. Ai margini della città, una pietra di luce per ogni mondo che somiglia al nostro.</p><div class="meta" style="margin-top:14px">scoperte</div>${Os.scoperte.map(s => `<div class="riga"><b>mondo ${s.n}</b> <span style="opacity:.55">(${esc(nomeDi(s.chi))})</span><br>${esc(s.testo)}</div>`).join('')}${Os.ipotesi.length ? `<div class="meta" style="margin-top:14px">ipotesi messe alla prova</div>${Os.ipotesi.map(h => `<div class="riga">${h.stato === 'regge' ? 'regge' : 'cade'} · ${esc(h.testo)} <span style="opacity:.5">fiducia ${Math.round(h.fiducia * 100)}%</span></div>`).join('')}` : ''}` }
+  function schedaPiazza() { const G = D.giornate[0]; let h = `<div class="meta">la piazza · giornata ${G?.cittaGiorno ?? ''}</div><h2>${esc(D.nome ?? 'La città senza nome')}</h2><p>Al centro la tavola più amata, stesa a terra e sollevata in rilievo dalla sua stessa luce. Qui si discute, si vota, si decide.</p>`; if (D.decisioni.length) h += `<div class="meta">decisioni</div>${D.decisioni.slice(0, 6).map(d => `<div class="riga">${esc(d.cosa)} <span style="opacity:.5">${esc(d.stato)}${d.esito ? ` · ${esc(d.esito)}` : ''}</span></div>`).join('')}`; if (D.cantieri.length) h += `<div class="meta" style="margin-top:14px">cantieri</div>${D.cantieri.map(c => `<div class="riga">${esc(c.cosa)}<br><span style="opacity:.55">${c.passi.map(p => `${esc(p.testo)} (${esc(p.dove)}, ${esc(p.stato)})`).join(' · ')}</span></div>`).join('')}`; if (D.officina.length) h += `<div class="meta" style="margin-top:14px">l'officina</div>${D.officina.map(o => `<div class="riga">${esc(o.nome)} <span style="opacity:.5">di ${esc(o.autore)}</span><br><span class="mono" style="font-size:11px;opacity:.6">${esc(o.testo)}</span></div>`).join('')}`; return h }
+  function schedaOss() { const Os = D.osservatorio; if (!Os) return ''; return `<div class="meta">l'osservatorio · ${Os.campioni} mondi misurati</div><h2>La biblioteca degli universi</h2><p>La chimica, l'astronoma, l'astrofisico e la filosofa della scienza sfogliano il simulatore di universi: misurano mondi, mettono alla prova ipotesi, portano in piazza le scoperte. Ai margini, il nome di ogni mondo che somiglia al nostro.</p><div class="meta" style="margin-top:14px">scoperte</div>${Os.scoperte.map(s => `<div class="riga"><b>mondo ${s.n}</b> <span style="opacity:.55">(${esc(nomeDi(s.chi))})</span><br>${esc(s.testo)}</div>`).join('')}${Os.ipotesi.length ? `<div class="meta" style="margin-top:14px">ipotesi messe alla prova</div>${Os.ipotesi.map(h => `<div class="riga">${h.stato === 'regge' ? 'regge' : 'cade'} · ${esc(h.testo)} <span style="opacity:.5">fiducia ${Math.round(h.fiducia * 100)}%</span></div>`).join('')}` : ''}` }
   function schedaVerbale() { const G = D.giornate[0]; if (!G) return '<p>La città è appena nata.</p>'; let h = `<div class="meta">il verbale · giornata ${G.cittaGiorno}</div><h2>Cosa si sono detti oggi</h2>`, fase = ''; for (const b of G.verbale) { if (b.fase !== fase) { fase = b.fase; h += `<div class="meta" style="margin-top:14px">${esc(fase)}</div>` } h += `<div class="riga"><b>${esc(nomeDi(b.chi))}</b> ${esc(b.testo)}</div>` }; return h }
   function schedaAbitante(a) { return `<div class="meta">${esc(a.carica)}</div><h2>${esc(a.nome)}</h2><p>${a.n ? `${a.n} tavole nel suo insieme.` : 'Abita la piazza.'}</p>${a.vesti?.length ? `<div class="meta">addosso</div><p>${a.vesti.map(v => esc(v.id.replace(/_/g, ' '))).join(', ')}</p>` : ''}` }
   document.getElementById('apri').onclick = () => scheda(schedaVerbale())
