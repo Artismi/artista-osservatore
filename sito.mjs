@@ -43,7 +43,7 @@ table{border-collapse:collapse}td{padding:4px 14px 4px 0;vertical-align:top}foot
 <title>${esc(titolo)}</title><link rel="stylesheet" href="${sotto}stile.css"><link rel="alternate" type="application/rss+xml" href="${sotto}feed.xml" title="${esc(s.nome)}">${o.css ?? ''}</head><body>
 ${o.parete ? '' : `<a href="${sotto}index.html"><canvas id="campo" class="striscia"></canvas></a><script>window.PROGRAMMA=${mini}</script><script defer src="${sotto}parete.js"></script>`}
 <header${o.parete ? ' class="parete"' : ''}><a href="${sotto}index.html" style="text-decoration:none;color:inherit"><h1${o.parete ? ' class="nome"' : ''}>${esc(s.nome)}</h1></a>
-<nav><a href="${sotto}diario.html">pensieri</a><a href="${sotto}archivio.html">opere</a>${s.libro.length ? `<a href="${sotto}libro.html">libro</a>` : ''}${ig ? `<a href="${esc(ig)}">instagram</a>` : ''}</nav></header><main${o.parete ? ' class="pieno"' : ''}>`
+<nav><a href="${sotto}citta.html">città</a><a href="${sotto}diario.html">pensieri</a><a href="${sotto}archivio.html">opere</a>${s.libro.length ? `<a href="${sotto}libro.html">libro</a>` : ''}${ig ? `<a href="${esc(ig)}">instagram</a>` : ''}</nav></header><main${o.parete ? ' class="pieno"' : ''}>`
   const piedeDi = PIEDE => `</main><footer>${esc(s.nome)} è un generatore procedurale: legge, ragiona con regole e disegna. Nessuna intelligenza artificiale. Questo sito lo scrive e lo impagina lui.<br><a href="${PIEDE}come-parlo.html">come ragiona</a> · <a href="${PIEDE}letture.html">cosa ha letto</a></footer></body></html>`
   const piede = piedeDi(''), piede2 = piedeDi('../')
   const prima = id => (img.has(id) ? `img/${id}.jpg` : null)

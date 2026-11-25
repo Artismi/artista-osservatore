@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
 import { scriviBlog } from './sito.mjs'
+import { scriviCitta } from './citta.mjs'
 
 const MEM = process.env.MEMORIA ?? 'memoria'
 const PORT = Number(process.env.PORTA ?? 3123)
@@ -164,6 +165,10 @@ try {
   }
 
   // salva la memoria (immagini solo delle opere recenti, il resto vive su Instagram e nel sito)
+  // la bottega: prima di salvare, qualche prova di strumenti sulle tavole del cassetto (per conoscerli; niente si pubblica)
+  try { if (process.env.BOTTEGA !== 'no') await pg.evaluate(o => window.__artista.bottegaGiro({ ...o, log: m => console.log(m) }), { prove: Number(process.env.PROVE ?? 40), secondi: Number(process.env.BOTTEGA_S ?? 150) }) } catch (e) { log('bottega saltata:', String(e).slice(0, 120)) }
+  // la città interna: il territorio delle tavole e una giornata degli abitanti (osservano, leggono, votano, fanno prove, scrivono generatori)
+  try { if (process.env.CITTA !== 'no') { const v = await pg.evaluate(() => window.__artista.cittaGiro({ log: m => console.log(m) })); for (const b of v.slice(0, 40)) log(`  [${b.fase}] ${b.chi}: ${b.testo.slice(0, 160)}`) } } catch (e) { log('città saltata:', String(e).slice(0, 160)) }
   const m = await pg.evaluate(() => window.__artista.memoria.esporta(0))
   // le immagini una alla volta (tutte insieme in un messaggio solo fanno cadere il browser); quelle già su disco non si rifanno
   const tenere = new Set(await pg.evaluate(() => window.__artista.memoria.recenti(400)))
@@ -190,6 +195,7 @@ try {
   const s = await pg.evaluate(() => window.__artista.perIlSito())
   try { rmSync(join(MEM, 'appunti.html'), { force: true }) } catch {}
   try { scriviBlog(MEM, s, tenere) } catch (e) { console.error('sito non scritto:', e) } // il sito non deve mai far perdere la memoria
+  try { scriviCitta(MEM, await pg.evaluate(() => window.__artista.perLaCitta()), tenere, s) } catch (e) { console.error('città non scritta:', e) }
   writeFileSync(join(MEM, '.nojekyll'), '')
   if (process.env.DOMINIO) writeFileSync(join(MEM, 'CNAME'), process.env.DOMINIO + '\n') // il suo indirizzo su artismi, se c'è
   // il token rinnovato, cifrato
