@@ -44,6 +44,10 @@ let browser
 try {
   browser = await chromium.launch({ channel: process.env.CHROME ? undefined : 'chrome', executablePath: process.env.CHROME || undefined, headless: true, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'] })
   const pg = await browser.newPage({ viewport: { width: 1400, height: 1000 } })
+  if (process.env.NUVOLA) await pg.addInitScript(() => { window.__nuvola = true })
+  if (process.env.OFFICINA) await pg.addInitScript(() => { window.__officina = true })
+  if (process.env.TAVOLE) await pg.addInitScript(() => { window.__tavole = true })
+  if (process.env.MOTORE) await pg.addInitScript(() => { window.__motore = true })
   pg.on('console', m => { const t = m.text(); if (!/Download the React DevTools|\[Fast Refresh\]/.test(t)) console.log('  ', t.slice(0, 300)) })
   pg.on('pageerror', e => console.log('  errore pagina:', e.message))
   pg.setDefaultTimeout(0)
@@ -167,7 +171,7 @@ try {
   // salva la memoria (immagini solo delle opere recenti, il resto vive su Instagram e nel sito)
   // la bottega: prima di salvare, qualche prova di strumenti sulle tavole del cassetto (per conoscerli; niente si pubblica)
   try { if (process.env.BOTTEGA !== 'no') await pg.evaluate(o => window.__artista.bottegaGiro({ ...o, log: m => console.log(m) }), { prove: Number(process.env.PROVE ?? 40), secondi: Number(process.env.BOTTEGA_S ?? 150) }) } catch (e) { log('bottega saltata:', String(e).slice(0, 120)) }
-  // la città interna: il territorio delle tavole e una giornata degli abitanti (osservano, leggono, votano, fanno prove, scrivono generatori)
+  // la città interna: il territorio delle tavole e una giornata degli abitanti (osservano e scrivono il verbale)
   try { if (process.env.CITTA !== 'no') { const v = await pg.evaluate(() => window.__artista.cittaGiro({ log: m => console.log(m) })); for (const b of v.slice(0, 40)) log(`  [${b.fase}] ${b.chi}: ${b.testo.slice(0, 160)}`) } } catch (e) { log('città saltata:', String(e).slice(0, 160)) }
   const m = await pg.evaluate(() => window.__artista.memoria.esporta(0))
   // le immagini una alla volta (tutte insieme in un messaggio solo fanno cadere il browser); quelle già su disco non si rifanno
