@@ -109,7 +109,7 @@
     // la carta: il suolo infinito, chiaro, che sfuma attorno allo sguardo
     const AMPIO = LATO + 2400, geo = new THREE.PlaneGeometry(AMPIO, AMPIO, 360, 360); geo.rotateX(-Math.PI / 2)
     const pos = geo.attributes.position; for (let i = 0; i < pos.count; i++) pos.setY(i, altezza(pos.getX(i), pos.getZ(i))); geo.computeVertexNormals()
-    const mat = new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.35, metalness: 0.2, transparent: true, opacity: 0.8, depthWrite: false })
+    const mat = new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.35, metalness: 0.2, transparent: true, opacity: 0.62, depthWrite: false })
     var occhio = { value: new THREE.Vector3() }
     mat.onBeforeCompile = sh => {
       sh.uniforms.occhio = occhio
@@ -144,6 +144,7 @@
       fondiVivi.push(mat)
     })
   }
+  var reteMat = null
   // la rete in 3d: ogni tavola è un punto nello spazio (più in alto quanto più conta), ogni legame un filo nell'aria;
   // sotto stanno le tavole, sopra le parole. I fili più forti in vermiglio.
   {
@@ -154,17 +155,18 @@
     scena.add(new THREE.Points(gp, new THREE.PointsMaterial({ color: 0xe8e2d6, size: 2, sizeAttenuation: false, transparent: true, opacity: 0.45, depthWrite: false })))
     // i fili: per tavola i due più forti; curvi verso l'alto, come archi tesi
     const migliori = new Map(); for (const f of fili) for (const k of [f[0], f[1]]) { if (!migliori.has(k)) migliori.set(k, []); migliori.get(k).push(f) }
-    const scelti = new Set(); for (const l of migliori.values()) for (const f of l.sort((a, b) => b[2] - a[2]).slice(0, 2)) scelti.add(f)
+    const scelti = new Set(); for (const l of migliori.values()) for (const f of l.sort((a, b) => b[2] - a[2]).slice(0, 1)) scelti.add(f)
     const lin = [], col = [], tinta = new THREE.Color()
+    const lunghe = [...scelti].map(f => qN[f[0]] && qN[f[1]] ? qN[f[0]].distanceTo(qN[f[1]]) : 0).sort((a, b) => a - b), corta = lunghe[Math.floor(lunghe.length * 0.75)] ?? 1e9
     for (const f of scelti) {
-      const A = qN[f[0]], B = qN[f[1]]; if (!A || !B) continue
+      const A = qN[f[0]], B = qN[f[1]]; if (!A || !B || (A.distanceTo(B) > corta && f[2] < soglia)) continue
       const t = f[2] / wmax, M = A.clone().lerp(B, 0.5); M.y += A.distanceTo(B) * 0.18
       const curva = new THREE.QuadraticBezierCurve3(A, M, B).getPoints(10)
       if (f[2] >= soglia) tinta.setRGB(0.89, 0.21, 0.11); else tinta.setRGB(0.91, 0.89, 0.84).multiplyScalar(0.05 + 0.3 * t)
       for (let k = 0; k < curva.length - 1; k++) { lin.push(curva[k].x, curva[k].y, curva[k].z, curva[k + 1].x, curva[k + 1].y, curva[k + 1].z); col.push(tinta.r, tinta.g, tinta.b, tinta.r, tinta.g, tinta.b) }
     }
     const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3)); gl.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
-    scena.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })))
+    reteMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }); scena.add(new THREE.LineSegments(gl, reteMat))
   }
 
   const PZ = new THREE.Vector3(X(D.piazza.x), 0, Z(D.piazza.y)); PZ.y = altezza(PZ.x, PZ.z)
@@ -188,7 +190,7 @@
   const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
   const materialeRiflesso = (id, alto, H) => { const mat = new THREE.ShaderMaterial({ uniforms: { mappa: { value: null } }, transparent: true, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-    fragmentShader: `uniform sampler2D mappa; varying vec2 vUv; void main(){ vec3 c = vec3(0.); for (int i=-2;i<=2;i++) for (int j=-2;j<=2;j++) c += texture2D(mappa, vUv + vec2(float(i),float(j))*.012).rgb; c /= 25.; float f = smoothstep(0., 1., vUv.y) * ${(0.42 * Math.max(0.2, 1 - alto / 120)).toFixed(3)}; gl_FragColor = vec4(c, f); }` })
+    fragmentShader: `uniform sampler2D mappa; varying vec2 vUv; void main(){ vec3 c = vec3(0.); for (int i=-2;i<=2;i++) for (int j=-2;j<=2;j++) c += texture2D(mappa, vUv + vec2(float(i),float(j))*.012).rgb; c /= 25.; float f = smoothstep(0., 1., vUv.y) * ${(0.7 * Math.max(0.25, 1 - alto / 140)).toFixed(3)}; gl_FragColor = vec4(c, f); }` })
     texture(id).then(t => { mat.uniforms.mappa.value = t }); return mat }
   const perQ = new Map(); for (const p of D.punti.filter(p => p.img)) { if (!perQ.has(p.q)) perQ.set(p.q, []); perQ.get(p.q).push(p) }
   const quart = new Map(D.quartieri.map(q => [q.id, q]))
@@ -312,7 +314,7 @@
   {
     const lista = [...parole.values()].sort((a, b) => b.tot - a.tot).slice(0, 30), taglie = [14, 9, 6, 5]
     lista.forEach((P, i) => {
-      const cl = i < 6 ? 0 : i < 14 ? 1 : 2, alto = taglie[cl], x = X(P.x), z = Z(P.y), y = altezza(x, z) + 46 + P.generale * 170 + (2 - cl) * 22
+      const cl = i < 6 ? 0 : i < 14 ? 1 : 2, alto = taglie[cl], x = X(P.x), z = Z(P.y), y = altezza(x, z) + 115 + P.generale * 160 + (2 - cl) * 20
       const m = scritta(P.w, alto, cl === 0 ? '#f1ece2' : '#cfc9be', cl < 2 ? 600 : 500); m.position.set(x, y, z); m.renderOrder = 5; scena.add(m)
       m.userData = { tipo: 'parola', P, cl }; cliccabili.push(m); scritte.push(m); P.mesh = m; P.base = new THREE.Vector3(x, y - alto / 2 - 1, z)
       const spillo = new THREE.BufferGeometry().setFromPoints([P.base, new THREE.Vector3(x, altezza(x, z) + 0.6, z)])
@@ -431,6 +433,7 @@
       else { const passo = Math.min(dist, p.vel * dt); p.g.position.addScaledVector(d.normalize(), passo); p.g.position.y = altezza(p.g.position.x, p.g.position.z); p.g.rotation.y = Math.atan2(d.x, d.z); speed = 1.2 }
       try { Models.animPerson(p.g, { speed, anim }, dt) } catch (_) { /* resta ferma */ }
     }
+    if (reteMat) reteMat.opacity = 0.2 + 0.45 * Math.max(0, Math.min(1, 1 - (O.dist - 250) / 900)) // da lontano la rete si dirada, da vicino si legge
     const tt = ora / 1000; for (const m of fondiVivi) m.uniforms.u_time.value = tt; for (const m of ologrammi) m.uniforms.t.value = tt
     { const ry = Math.round((O.yaw - Math.PI / 4) / (Math.PI / 2)) * (Math.PI / 2); for (const m of scritte) m.rotation.y = ry }
     R.render(scena, cam)
