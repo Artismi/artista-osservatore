@@ -205,6 +205,8 @@ try {
   const s = await pg.evaluate(() => window.__artista.perIlSito())
   try { rmSync(join(MEM, 'appunti.html'), { force: true }) } catch {}
   try { scriviBlog(MEM, s, tenere) } catch (e) { console.error('sito non scritto:', e) } // il sito non deve mai far perdere la memoria
+  // i tessuti della città (i fondali tessuti oggi dai generatori): restano per sempre, come le miniature
+  try { mkdirSync(join(MEM, 'tessuti'), { recursive: true }); for (const t of await pg.evaluate(() => window.__artista.tessutiNuovi?.() ?? [])) writeFileSync(join(MEM, 'tessuti', `${t.id}.jpg`), Buffer.from(t.url.split(',')[1], 'base64')) } catch (e) { log('tessuti non salvati:', e.message) }
   try { scriviCitta(MEM, await pg.evaluate(() => window.__artista.perLaCitta()), tenere, s) } catch (e) { console.error('città non scritta:', e) }
   writeFileSync(join(MEM, '.nojekyll'), '')
   if (process.env.DOMINIO) writeFileSync(join(MEM, 'CNAME'), process.env.DOMINIO + '\n') // il suo indirizzo su artismi, se c'è

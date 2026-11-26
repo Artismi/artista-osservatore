@@ -346,7 +346,8 @@
     const lz = d.avanti === 1 ? R.piano[1] * 0.5 + 6 : d.avanti === -1 ? -R.piano[1] * 0.5 - 6 : 0, [x, z] = R.aMondo(0, lz), y = R.centro.y + (d.quota ?? 30)
     const L = d.largo ?? 60, H = d.alto ?? 40, g = new THREE.PlaneGeometry(L, H)
     let mat
-    if (d.contenuto === 'motivo') { mat = R.q?.sala?.suolo?.codice ? motivo(R.q.sala.suolo.codice) : null; if (mat) mat.uniforms.opacita.value = d.opacita ?? 0.4 }
+    if (d.contenuto === 'motivo' && d.tessuto) { mat = tavolaMatDa(`tessuti/${d.tessuto}.jpg`); mat.transparent = true; mat.opacity = Math.max(0.55, d.opacita ?? 0.4); mat.depthWrite = false } // tessuto con un generatore vero
+    else if (d.contenuto === 'motivo') { mat = R.q?.sala?.suolo?.codice ? motivo(R.q.sala.suolo.codice) : null; if (mat) mat.uniforms.opacita.value = d.opacita ?? 0.4 }
     else if (d.contenuto === 'tavola') { const p = posDi.get(d.tavola); if (p?.img) { mat = tavolaMat(p.id); mat.transparent = true; mat.opacity = d.opacita ?? 0.6; mat.depthWrite = false } }
     if (!mat) mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(d.colore ?? '#ebe6dc'), transparent: true, opacity: d.opacita ?? 0.15, side: THREE.DoubleSide, depthWrite: false })
     const m = new THREE.Mesh(g, mat), ordine = new THREE.Group(); ordine.position.set(x, y, z)
