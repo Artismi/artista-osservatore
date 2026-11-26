@@ -29,7 +29,7 @@
   const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, -6000, 6000)
   const inquadra = () => { const a = innerWidth / innerHeight, h = O.dist / 2; cam.left = -h * a; cam.right = h * a; cam.top = h; cam.bottom = -h; cam.updateProjectionMatrix() }
   addEventListener('resize', () => { R.setSize(innerWidth, innerHeight); inquadra() })
-  scena.add(new THREE.HemisphereLight(0xc8d2e0, 0x2a2622, 0.5))
+  scena.add(new THREE.HemisphereLight(0xc8d2e0, 0x2a2622, 0.35))
   const sole = new THREE.DirectionalLight(0xfff0dc, 0.95); sole.position.set(-700, 1100, 500); sole.castShadow = true
   sole.shadow.mapSize.set(2048, 2048); Object.assign(sole.shadow.camera, { left: -700, right: 700, top: 700, bottom: -700, near: 10, far: 3000 }); sole.shadow.bias = -0.0006; scena.add(sole)
 
@@ -109,17 +109,17 @@
     // la carta: il suolo infinito, chiaro, che sfuma attorno allo sguardo
     const AMPIO = LATO + 2400, geo = new THREE.PlaneGeometry(AMPIO, AMPIO, 360, 360); geo.rotateX(-Math.PI / 2)
     const pos = geo.attributes.position; for (let i = 0; i < pos.count; i++) pos.setY(i, altezza(pos.getX(i), pos.getZ(i))); geo.computeVertexNormals()
-    const mat = new THREE.MeshStandardMaterial({ color: 0xebe6dc, roughness: 0.95 })
+    const mat = new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.95 })
     var occhio = { value: new THREE.Vector3() }
     mat.onBeforeCompile = sh => {
       sh.uniforms.occhio = occhio
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvMondo = (modelMatrix*vec4(position,1.)).xyz;')
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo; uniform vec3 occhio;')
         .replace('#include <fog_fragment>', `#include <fog_fragment>
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(.102,.110,.125), smoothstep(occhio.z * .55, occhio.z * 1.25, length(vMondo.xz - occhio.xy)));`)
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(.035,.038,.045), smoothstep(occhio.z * .45, occhio.z * 1.25, length(vMondo.xz - occhio.xy)));`)
     }
     const terra = new THREE.Mesh(geo, mat); terra.receiveShadow = true; scena.add(terra)
-    scena.background = new THREE.Color(0x1a1c20)
+    scena.background = new THREE.Color(0x090a0c)
   }
   // i fondi delle aree: lo shader che il curatore ha composto (o raccolto), steso dentro il lotto dell'area
   const fondiVivi = []
@@ -130,7 +130,7 @@
       let corpo = F.codice.replace(/#version[^\n]*\n/g, '').replace(/\bgl_FragCoord\b/g, 'vec4(vU*u_resolution,0.,1.)').replace(/void\s+main\s*\(\s*\)/, 'void fondo_main()')
       if (/mainImage\s*\(/.test(corpo)) corpo = corpo.replace(/void\s+fondo_main\s*\(\s*\)/, 'void fondo_main_x()') + '\nvoid fondo_main(){ vec4 c=vec4(0.); mainImage(c, vU*u_resolution); gl_FragColor=vec4(c.rgb,1.); }'
       const testa = `precision highp float;\nuniform float u_time; uniform vec2 u_resolution; uniform float u_seed; uniform sampler2D maschera; varying vec2 vU; varying vec2 vM;\n${/mainImage/.test(corpo) ? '#define iTime u_time\n#define iResolution vec3(u_resolution,1.)\n' : ''}`
-      const frag = testa + corpo + '\nvoid main(){ fondo_main(); gl_FragColor.a = texture2D(maschera, vM).r * .92; }'
+      const frag = testa + corpo + '\nvoid main(){ fondo_main(); gl_FragColor.rgb *= .32; gl_FragColor.a = texture2D(maschera, vM).r * .9; }'
       if (!prova(frag)) return
       // la toppa copre solo dove la maschera dell'area c'è
       let i0 = GN, i1 = 0, j0 = GN, j1 = 0; const M = maschere[k]; for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) if (M[j * GN + i] > 8) { i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j) }
@@ -154,15 +154,15 @@
     for (const [a, b, w] of fili) {
       const A = D.punti[a], B = D.punti[b]; if (!A || !B) continue
       const x0 = ux(A.x), y0 = uz(A.y), x1 = ux(B.x), y1 = uz(B.y), mx = (x0 + x1) / 2 + (y0 - y1) * 0.08, my = (y0 + y1) / 2 + (x1 - x0) * 0.08, t = w / wmax
-      g.strokeStyle = w >= soglia ? `rgba(227,54,27,${0.45 + 0.35 * t})` : `rgba(18,18,18,${0.025 + 0.22 * t * t})`; g.lineWidth = (0.12 + 1.1 * t ** 1.5) * k1
+      g.strokeStyle = w >= soglia ? `rgba(227,54,27,${0.45 + 0.35 * t})` : `rgba(225,218,205,${0.02 + 0.2 * t * t})`; g.lineWidth = (0.12 + 1.1 * t ** 1.5) * k1
       g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(mx, my, x1, y1); g.stroke()
     }
     let zz = 31; const cs = () => { zz = (zz * 1664525 + 1013904223) >>> 0; return zz / 4294967296 }
-    g.fillStyle = 'rgba(18,18,18,.72)'
+    g.fillStyle = 'rgba(225,218,205,.55)'
     for (const p of D.punti) {
-      const x = ux(p.x), y = uz(p.y), r = (0.45 + 1.7 * Math.sqrt(p.i ?? 0.3)) * k1
+      const x = ux(p.x), y = uz(p.y), r = (0.2 + 0.75 * Math.sqrt(p.i ?? 0.3)) * k1
       g.beginPath(); for (let s = 0; s <= 18; s++) { const a = s / 18 * Math.PI * 2, rr = r * (0.82 + 0.3 * cs()); s ? g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) : g.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) } g.fill()
-      const n = Math.floor((p.i ?? 0.3) * 5); for (let s = 0; s < n; s++) { const a = cs() * Math.PI * 2, d = r * (1.3 + cs() * 2.2), rr = r * (0.07 + cs() * 0.2); g.beginPath(); g.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d, rr * 1.6, rr, a, 0, 7); g.fill() }
+      const n = Math.floor((p.i ?? 0.3) * 3); for (let s = 0; s < n; s++) { const a = cs() * Math.PI * 2, d = r * (1.3 + cs() * 2.2), rr = r * (0.07 + cs() * 0.2); g.beginPath(); g.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d, rr * 1.6, rr, a, 0, 7); g.fill() }
     }
     const tx = new THREE.CanvasTexture(cv); tx.anisotropy = 8; tx.encoding = THREE.sRGBEncoding
     const m = new THREE.Mesh(toppa(GX0, GZ0, GLX, GLZ, 0.5, 200), new THREE.MeshBasicMaterial({ map: tx, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -4 }))
@@ -187,7 +187,7 @@
   const carica = new THREE.TextureLoader(), cliccabili = [], etichette = [], strato = document.getElementById('etichette')
   const etichetta = (html, p, lontano, cls = '') => { const el = document.createElement('div'); el.className = 'et ' + cls; el.innerHTML = html; strato.appendChild(el); const e = { el, p, lontano }; etichette.push(e); return e }
   const texDi = new Map(), texture = id => { if (!texDi.has(id)) texDi.set(id, new Promise(ok => carica.load(`img/${id}.jpg`, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; ok(t) }, undefined, () => ok(null)))); return texDi.get(id) }
-  const tavolaMat = (id, taglio) => { const m = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.65, side: THREE.DoubleSide }); texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
+  const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
   const perQ = new Map(); for (const p of D.punti.filter(p => p.img)) { if (!perQ.has(p.q)) perQ.set(p.q, []); perQ.get(p.q).push(p) }
   const quart = new Map(D.quartieri.map(q => [q.id, q]))
   const idxDi = new Map(D.punti.map((p, i) => [p.id, i])), filiDi = new Map(); for (const [a, b, w] of D.fili ?? []) { for (const [x, y] of [[a, b], [b, a]]) { if (!filiDi.has(x)) filiDi.set(x, new Map()); filiDi.get(x).set(y, w) } }
@@ -229,21 +229,22 @@
       const col = Math.ceil(Math.sqrt(n)), righe = Math.ceil(n / col), celle = []
       for (let j = 0; j < righe; j++) for (let i = 0; i < col; i++) celle.push([(i - (col - 1) / 2) * st, (j - (righe - 1) / 2) * (h + gap)])
       celle.sort((a, b) => Math.hypot(...a) - Math.hypot(...b)) // dal centro verso fuori: la più amata in mezzo
-      for (let i = 0; i < n; i++) posti.push([celle[i][0], celle[i][1], [0, 1], true, 0])
+      for (let i = 0; i < n; i++) posti.push([celle[i][0], -celle[i][1] * 0.4, [0, 1], false, (righe - 1) * (h + gap) / 2 - celle[i][1]])
       var piano = [col * st + 14, righe * (h + gap) + 14]
     } else { // strati: piani sospesi, la più amata in cima
-      for (let i = 0; i < n; i++) { const liv = Math.floor(i / 3), k = i % 3; posti.push([(k - 1) * st, 0, [0, 1], true, 8 + (Math.ceil(n / 3) - 1 - liv) * 18]) }
+      for (let i = 0; i < n; i++) { const liv = Math.floor(i / 3), k = i % 3; posti.push([(k - 1) * st, -liv * 12, [0, 1], false, (Math.ceil(n / 3) - 1 - liv) * (h * 0.55)]) }
       var piano = [3 * st + 14, h + 18]
     }
     // il pavimento della sala: una lastra smussata, perché il fondo ci scorra sopra senza spigoli
     const base = new THREE.Mesh(smussato(piano[0], piano[1], 0.8, 10), new THREE.MeshStandardMaterial({ color: rovina ? 0xb9b3a8 : 0xf3efe7, roughness: 0.9, transparent: true, opacity: 0.72 }))
-    base.position.set(cx, cy + 0.6, cz); base.rotation.y = ax; base.receiveShadow = true; scena.add(base)
+    base.geometry.dispose() // niente pavimento bianco: le tavole galleggiano nel buio
     ord.forEach((p, i) => {
       const [lx, lz, [dx, dz], aTerra, su] = posti[i], [x, z] = aMondo(lx, lz), m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), tavolaMat(p.id))
       if (aTerra) { m.rotation.set(-Math.PI / 2, 0, ax); m.position.set(x, cy + 2 + su, z); if (su) m.castShadow = true }
       else {
-        m.rotation.y = verso(dx, dz); m.position.set(x, cy + 2.5 + h / 2, z); m.castShadow = true
-        const retro = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.8, h + 0.8), new THREE.MeshStandardMaterial({ color: 0xd8d2c6, roughness: 0.9, side: THREE.DoubleSide })); retro.position.copy(m.position); retro.rotation.copy(m.rotation); retro.translateZ(-0.25); retro.castShadow = true; scena.add(retro)
+        m.rotation.y = verso(dx, dz); m.position.set(x, cy + 9 + h / 2 + su, z); m.castShadow = true
+        const retro = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.8, h + 0.8), new THREE.MeshBasicMaterial({ color: 0x1b1c20, side: THREE.DoubleSide })); retro.position.copy(m.position); retro.rotation.copy(m.rotation); retro.translateZ(-0.25); scena.add(retro)
+        const bordo = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(w + 1.6, h + 1.6)), new THREE.LineBasicMaterial({ color: 0xe8e2d6, transparent: true, opacity: 0.35 })); bordo.position.copy(m.position); bordo.rotation.copy(m.rotation); bordo.translateZ(-0.1); scena.add(bordo)
       }
       if (rovina) m.rotation.z += (caso() - 0.5) * 0.12
       scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m); meshDi.set(p.id, { m, w, h, aTerra })
@@ -259,7 +260,7 @@
   // ritagli da altre aree, ologrammi: la sala diventa un pezzo di un'architettura-collage. ──────────────────────
   const scritta = (testo, alto, colore = '#121212', peso = 700) => {
     const cv = document.createElement('canvas'), g = cv.getContext('2d'), fs = 96; g.font = `${peso} ${fs}px ${D.stile?.titoli ?? 'Inter'}, Inter, sans-serif`
-    const lw = Math.ceil(g.measureText(testo).width) + 16; cv.width = lw; cv.height = fs * 1.3; g.font = `${peso} ${fs}px ${D.stile?.titoli ?? 'Inter'}, Inter, sans-serif`; g.fillStyle = colore; g.textBaseline = 'middle'; g.fillText(testo, 8, cv.height / 2)
+    const lw = Math.ceil(g.measureText(testo).width) + 16; cv.width = lw; cv.height = fs * 1.3; g.font = `${peso} ${fs}px ${D.stile?.titoli ?? 'Inter'}, Inter, sans-serif`; g.fillStyle = colore; g.textBaseline = 'middle'; g.shadowColor = 'rgba(0,0,0,.85)'; g.shadowBlur = 10; g.fillText(testo, 8, cv.height / 2)
     const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 8
     const m = new THREE.Mesh(new THREE.PlaneGeometry(alto * cv.width / cv.height, alto), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide })); m.userData.largo = alto * cv.width / cv.height; return m
   }
@@ -290,10 +291,10 @@
     const lista = [...parole.values()].sort((a, b) => b.tot - a.tot).slice(0, 30), taglie = [22, 13, 8, 6]
     lista.forEach((P, i) => {
       const cl = i < 6 ? 0 : i < 14 ? 1 : 2, alto = taglie[cl], x = X(P.x), z = Z(P.y), y = altezza(x, z) + 46 + P.generale * 170 + (2 - cl) * 22
-      const m = scritta(P.w, alto, cl === 0 ? '#121212' : '#2a2724', cl < 2 ? 700 : 500); m.position.set(x, y, z); m.renderOrder = 5; scena.add(m)
+      const m = scritta(P.w, alto, cl === 0 ? '#f1ece2' : '#cfc9be', cl < 2 ? 600 : 500); m.position.set(x, y, z); m.renderOrder = 5; scena.add(m)
       m.userData = { tipo: 'parola', P, cl }; cliccabili.push(m); scritte.push(m); P.mesh = m; P.base = new THREE.Vector3(x, y - alto / 2 - 1, z)
       const spillo = new THREE.BufferGeometry().setFromPoints([P.base, new THREE.Vector3(x, altezza(x, z) + 0.6, z)])
-      if (cl < 2) scena.add(new THREE.Line(spillo, new THREE.LineBasicMaterial({ color: 0x121212, transparent: true, opacity: cl ? 0.25 : 0.4 })))
+      if (cl < 2) scena.add(new THREE.Line(spillo, new THREE.LineBasicMaterial({ color: 0xe8e2d6, transparent: true, opacity: cl ? 0.12 : 0.22 })))
     })
     // i fili tra le parole: quanto si somigliano le loro distribuzioni sulle aree
     const sim = (A, B) => { let s = 0, a = 0, b = 0; for (let k = 0; k < NQ; k++) { s += A.dist[k] * B.dist[k]; a += A.dist[k] ** 2; b += B.dist[k] ** 2 } return s / (Math.sqrt(a * b) || 1) }
@@ -304,7 +305,7 @@
         const k = [A.w, B.w].sort().join('|'); if (fatti.has(k)) continue; fatti.add(k)
         const M = A.base.clone().lerp(B.base, 0.5); M.y += A.base.distanceTo(B.base) * 0.12
         const g = new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(A.base, M, B.base).getPoints(32))
-        scena.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: s > 0.75 ? 0xe3361b : 0x121212, transparent: true, opacity: 0.1 + 0.4 * s })))
+        scena.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: s > 0.75 ? 0xe3361b : 0xe8e2d6, transparent: true, opacity: 0.06 + 0.25 * s })))
       }
     }
   }
@@ -313,7 +314,7 @@
   for (const c of costr.filter(c => c.tipo === 'graffito')) {
     const A = sale.find(s => s.c.id === c.a), p = posDi.get(c.dati?.tavola); if (!A || !p?.img) continue
     const x = A.centro.x + (caso() - 0.5) * 50, z = A.centro.z + (caso() - 0.5) * 50, y = altezza(x, z)
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(10, 12.5), tavolaMat(p.id)); m.position.set(x, y + 0.5, z); m.rotation.set(-Math.PI / 2, 0, Math.floor(caso() * 4) * Math.PI / 2 + (caso() - 0.5) * 0.2); scena.add(m)
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(10, 12.5), tavolaMat(p.id)); m.position.set(x, y + 16, z); m.rotation.set(0, Math.floor(caso() * 2) * Math.PI / 2, (caso() - 0.5) * 0.15); scena.add(m)
     m.userData = { tipo: 'tavola', p, graffito: nomeDi(c.chi) }; cliccabili.push(m)
   }
   // il monumento: la tavola più amata, stesa in piazza e sollevata in rilievo
