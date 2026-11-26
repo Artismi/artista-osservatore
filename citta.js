@@ -230,22 +230,24 @@
     // le ama, la più amata al centro e più in alto, le altre attorno senza toccarsi; ogni tavola è una lightbox
     const imax = Math.max(1e-6, ...ord.map(p => p.i)), imin = Math.min(...ord.map(p => p.i))
     const scala = p => 0.65 + 0.9 * ((p.i - imin) / (imax - imin || 1)) ** 1.3
-    const pareti = forma === 'corridoio' ? [{ o: [-16, 0], d: [1, 0], lungo: [0, 1] }, { o: [16, 0], d: [-1, 0], lungo: [0, 1] }]
-      : forma === 'abside' ? [{ o: [0, -26], d: [0, 1], lungo: [1, 0] }, { o: [-34, 6], d: [1, 0], lungo: [0, 1] }, { o: [34, 6], d: [-1, 0], lungo: [0, 1] }]
+    // l'allestimento scritto dagli abitanti (dove sta ogni tavola, quanto è grande, quanto è girata): se c'è, si disegna quello
+    const ALL = K.allestimenti?.[c.id], formaS = ALL?.forma ?? forma
+    const pareti = formaS === 'corridoio' ? [{ o: [-16, 0], d: [1, 0], lungo: [0, 1] }, { o: [16, 0], d: [-1, 0], lungo: [0, 1] }]
+      : formaS === 'abside' ? [{ o: [0, -26], d: [0, 1], lungo: [1, 0] }, { o: [-34, 6], d: [1, 0], lungo: [0, 1] }, { o: [34, 6], d: [-1, 0], lungo: [0, 1] }]
       : [{ o: [0, 0], d: [0, 1], lungo: [1, 0] }]
-    const quote = forma === 'corridoio' ? [1, 1] : forma === 'abside' ? [2, 1, 1] : [1]
-    const perParete = pareti.map(() => []); { let k = 0; const tot = quote.reduce((a, b) => a + b, 0); ord.forEach((p, i) => { const slot = i === 0 ? 0 : (() => { let acc = 0, x = (k++ * 0.618) % 1 * tot; for (let j = 0; j < quote.length; j++) { acc += quote[j]; if (x < acc) return j } return 0 })(); perParete[slot].push(p) }) }
+    const quote = formaS === 'corridoio' ? [1, 1] : formaS === 'abside' ? [2, 1, 1] : [1]
+    const perParete = pareti.map(() => []); if (ALL) { const riserva = (perQ.get(c.q) ?? []).filter(p => !ALL.voci.some(v => v.id === p.id)).sort((a, b) => b.i - a.i); for (const vo of ALL.voci) { let p = posDi.get(vo.id); if (!p?.img) p = riserva.shift() /* la tavola scelta non ha immagine sul sito: al suo posto la più amata tra quelle che ce l'hanno */; if (p?.img && perParete[vo.parete]) perParete[vo.parete].push({ ...p, voce: vo }) } } else { let k = 0; const tot = quote.reduce((a, b) => a + b, 0); ord.forEach((p, i) => { const slot = i === 0 ? 0 : (() => { let acc = 0, x = (k++ * 0.618) % 1 * tot; for (let j = 0; j < quote.length; j++) { acc += quote[j]; if (x < acc) return j } return 0 })(); perParete[slot].push(p) }) }
     const piano = [80, 60]
     perParete.forEach((lista, pi) => {
       const P = pareti[pi], messe = []
       lista.forEach((p, i) => {
-        const sc = scala(p) * (i === 0 && pi === 0 ? 1.35 : 1), W = w * sc, H = h * sc
+        const sc = p.voce ? p.voce.s : scala(p) * (i === 0 && pi === 0 ? 1.35 : 1), W = w * sc, H = h * sc
         // la spirale: dal centro della parete verso fuori, il primo posto libero (con un margine attorno)
         let u = 0, v = 0
-        for (let t = 0; t < 400; t++) { const a = t * 0.55, r = t * 0.9; u = Math.cos(a) * r * 1.4; v = Math.sin(a) * r * 0.8; if (!messe.some(m => Math.abs(m.u - u) < (m.W + W) / 2 + 3 && Math.abs(m.v - v) < (m.H + H) / 2 + 3)) break }
+        if (p.voce) { u = p.voce.u; v = p.voce.v } else for (let t = 0; t < 400; t++) { const a = t * 0.55, r = t * 0.9; u = Math.cos(a) * r * 1.4; v = Math.sin(a) * r * 0.8; if (!messe.some(m => Math.abs(m.u - u) < (m.W + W) / 2 + 3 && Math.abs(m.v - v) < (m.H + H) / 2 + 3)) break }
         messe.push({ u, v, W, H })
         const lx = P.o[0] + P.lungo[0] * u, lz = P.o[1] + P.lungo[1] * u, [x, z] = aMondo(lx, lz), y = cy + 30 + v
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(W, H), tavolaMat(p.id)); m.rotation.y = verso(P.d[0], P.d[1]); m.position.set(x, y, z)
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(W, H), tavolaMat(p.id)); m.rotation.y = verso(P.d[0], P.d[1]) + (p.voce?.gira ?? 0); m.position.set(x, y, z)
         // la lightbox: una cornice bianca che fa luce, e dietro il buio
         const cornice = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), new THREE.MeshBasicMaterial({ color: 0xf2f4ff })); cornice.position.copy(m.position); cornice.rotation.copy(m.rotation); cornice.translateZ(-0.12); scena.add(cornice)
         const retro = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), new THREE.MeshBasicMaterial({ color: 0x101114 })); retro.position.copy(m.position); retro.rotation.copy(m.rotation); retro.translateZ(-0.25); retro.rotateY(Math.PI); scena.add(retro)
