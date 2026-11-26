@@ -13,9 +13,28 @@
   const posDi = new Map(D.punti.map(p => [p.id, p]))
   const K = D.costruito ?? { costruzioni: [], nomiVie: {}, coltivato: [] }
   const costr = K.costruzioni ?? []
+  // i territori respirano: ognuno sulla sua collina, con il prato attorno. I centri si scostano finché tra uno e l'altro
+  // c'è aria; le tavole si raccolgono attorno al loro centro; tutto il resto (piazza, luoghi, case, sentieri) segue
+  // lo spostamento dei territori vicini, come un tessuto che si allarga.
+  {
+    const Qs = D.quartieri ?? [], C0 = Qs.map(q => { const ps = D.punti.filter(p => p.q === q.id); const n = ps.length || 1; return { id: q.id, x: ps.length ? ps.reduce((s, p) => s + p.x, 0) / n : q.x, y: ps.length ? ps.reduce((s, p) => s + p.y, 0) / n : q.y, n, r: 12 + Math.sqrt(n) * 3.4 } })
+    const P = C0.map(c => ({ ...c, x0: c.x, y0: c.y }))
+    for (let it = 0; it < 240; it++) { for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) { const a = P[i], b = P[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, m = a.r + b.r + 70; if (d < m) { const k = (m - d) / 2 / d * 0.6; a.x -= dx * k; a.y -= dy * k; b.x += dx * k; b.y += dy * k } }
+      for (const c of P) { c.x += (c.x0 - c.x) * 0.01; c.y += (c.y0 - c.y) * 0.01 } }
+    const del = new Map(P.map(c => [c.id, [c.x - c.x0, c.y - c.y0, c]]))
+    const campoSp = (x, y) => { let sx = 0, sy = 0, sw = 1e-6; for (const c of P) { const w = Math.exp(-((x - c.x0) ** 2 + (y - c.y0) ** 2) / (2 * 90 * 90)) * (c.r + 10); sx += (c.x - c.x0) * w; sy += (c.y - c.y0) * w; sw += w } return [sx / sw, sy / sw] }
+    const sposta = o => { if (!o || o.x == null) return; const [dx, dy] = campoSp(o.x, o.y); o.x += dx; o.y += dy }
+    for (const p of D.punti) { const d = del.get(p.q); if (!d) { sposta(p); continue } const c = d[2]; p.x = c.x + (p.x - c.x0) * 0.6; p.y = c.y + (p.y - c.y0) * 0.6 }
+    for (const q of Qs) { const d = del.get(q.id); if (d) { q.x += d[0]; q.y += d[1] } }
+    sposta(D.piazza)
+    for (const c of D.costruito?.costruzioni ?? []) if (c.pos?.x != null) { const d = del.get(c.q); if (d) { c.pos.x += d[0]; c.pos.y += d[1] } else sposta(c.pos) }
+    if (D.vita) { for (const l of D.vita.luoghi) { const d = l.q != null && l.tipo === 'sala' ? del.get(l.q) : null; if (d) { l.x += d[0]; l.y += d[1] } else sposta(l) } for (const t of D.vita.tracce) sposta(t)
+      for (const v of Object.values(D.vita.ab)) for (const o of v.oggi ?? []) sposta(o) }
+    D.__coltivatoSpostato = true
+  }
   // il diorama comprende solo quello che gli abitanti hanno costruito o coltivato (più un margine): cresce con loro
   const G48 = 48, pts0 = [[D.piazza.x, D.piazza.y], ...D.punti.map(p => [p.x, p.y]), ...costr.filter(c => c.pos?.x != null).map(c => [c.pos.x, c.pos.y]), ...(K.coltivato ?? []).map(k => [((k % G48) + 0.5) / G48 * 1000, (Math.floor(k / G48) + 0.5) / G48 * 1000])]
-  const bx0 = Math.max(0, Math.min(...pts0.map(p => p[0])) - 70), bx1 = Math.min(1000, Math.max(...pts0.map(p => p[0])) + 70), by0 = Math.max(0, Math.min(...pts0.map(p => p[1])) - 70), by1 = Math.min(1000, Math.max(...pts0.map(p => p[1])) + 70)
+  const bx0 = Math.min(...pts0.map(p => p[0])) - 70, bx1 = Math.max(...pts0.map(p => p[0])) + 70, by0 = Math.min(...pts0.map(p => p[1])) - 70, by1 = Math.max(...pts0.map(p => p[1])) + 70
   const cxT = (bx0 + bx1) / 2, cyT = (by0 + by1) / 2
   const S = 1.0, LX = (bx1 - bx0) * S, LZ = (by1 - by0) * S, LATO = Math.max(LX, LZ), X = x => (x - cxT) * S, Z = y => (y - cyT) * S
 
@@ -72,14 +91,14 @@
   const PAD = 120, GX0 = -LX / 2 - PAD, GZ0 = -LZ / 2 - PAD, GLX = LX + 2 * PAD, GLZ = LZ + 2 * PAD, GN = 192
   const campo = QS.map(() => new Float32Array(GN * GN)), cella = x => x * GN
   const spruzza = (F, wx, wz, amp, sig) => { const ci = (wx - GX0) / GLX * GN, cj = (wz - GZ0) / GLZ * GN, R = Math.ceil(3 * sig / GLX * GN), s2 = 2 * (sig / GLX * GN) ** 2; for (let j = Math.max(0, Math.floor(cj - R)); j <= Math.min(GN - 1, Math.ceil(cj + R)); j++) for (let i = Math.max(0, Math.floor(ci - R)); i <= Math.min(GN - 1, Math.ceil(ci + R)); i++) F[j * GN + i] += amp * Math.exp(-((i - ci) ** 2 + (j - cj) ** 2) / s2) }
-  for (const p of D.punti) { const k = qIdx.get(p.q); if (k != null) spruzza(campo[k], X(p.x), Z(p.y), 0.4 + (p.i ?? 0.5), 30) }
+  for (const p of D.punti) { const k = qIdx.get(p.q); if (k != null) spruzza(campo[k], X(p.x), Z(p.y), 0.4 + (p.i ?? 0.5), 42) }
   // un'area si allunga sotto le parole che le appartengono anche se stanno altrove (lingue, penisole, isole)
   const pesoP = QS.map((_, k) => D.punti.filter(p => qIdx.get(p.q) === k).length)
   for (const P of parole.values()) for (let k = 0; k < NQ; k++) { const s = P.dist[k] / P.tot; if (s > 0.12) spruzza(campo[k], X(P.x), Z(P.y), s * pesoP[k] * 0.06 * (P.tot / pmax + 0.3), 55) }
   // i legami tra le aree (i fili che le attraversano) e l'accordo sui confini tra i loro curatori
   const legameQ = new Float32Array(NQ * NQ); for (const [a, b, w] of D.fili ?? []) { const ka = qIdx.get(D.punti[a]?.q), kb = qIdx.get(D.punti[b]?.q); if (ka == null || kb == null || ka === kb) continue; legameQ[ka * NQ + kb] += w; legameQ[kb * NQ + ka] += w }
   const lmax = Math.max(1e-6, ...legameQ), carDi = id => D.abitanti.find(a => a.id === id)?.carattere ?? {}
-  const accordo = (a, b) => { const l = legameQ[a * NQ + b] / lmax, A = carDi(QS[a].sala?.curatore), B = carDi(QS[b].sala?.curatore); if (l > 0.5) return 0; if ((A.contrario ?? 0) + (B.contrario ?? 0) > 1.1 || (A.visionario ?? 0) + (B.visionario ?? 0) > 1.3) return 2; return 1 } // 0 si fondono, 1 carta, 2 contrasto
+  const accordo = (a, b) => { const l = legameQ[a * NQ + b] / lmax, A = carDi(QS[a].sala?.curatore), B = carDi(QS[b].sala?.curatore); if (l > 0.5) return 0; return 1 } // 0 si fondono, 1 carta, 2 contrasto
   const tot = new Float32Array(GN * GN), maschere = QS.map(() => new Uint8Array(GN * GN))
   let fmax = 0; for (let c = 0; c < GN * GN; c++) { let s = 0; for (let k = 0; k < NQ; k++) s += campo[k][c]; tot[c] = s; fmax = Math.max(fmax, s) }
   const liscio = (a, b, t) => { t = Math.min(1, Math.max(0, (t - a) / (b - a))); return t * t * (3 - 2 * t) }
@@ -89,7 +108,7 @@
     if (b < 0) continue
     const presenza = liscio(0.04, 0.16, fb / (fmax || 1)), m = (fb - fs) / (fb + fs + 1e-9), kk = s < 0 ? 1 : (accordi.get(b * NQ + s) ?? (accordi.set(b * NQ + s, accordo(b, s)), accordi.get(b * NQ + s)))
     let wb = 1, ws = 0
-    if (s >= 0) { if (kk === 0) { wb = 0.5 + 0.5 * liscio(0, 0.35, m); ws = 1 - wb } else if (kk === 1) wb = liscio(0.05, 0.16, m); else wb = m > 0.015 ? 1 : 0 }
+    if (s >= 0) { if (kk === 0) { wb = 0.5 + 0.5 * liscio(0, 0.35, m); ws = 1 - wb } else if (kk === 1) wb = liscio(0.0, 0.45, m); else wb = m > 0.015 ? 1 : 0 }
     maschere[b][c] = Math.round(255 * wb * presenza); if (s >= 0 && ws) maschere[s][c] = Math.round(255 * ws * presenza)
   }
   // il rilievo: dolce, più alto dove il sapere si accumula
@@ -103,7 +122,7 @@
     if (u < 0 || v < 0 || u > GN - 1 || v > GN - 1) return 2 + Math.sin(x * 0.01) * Math.cos(z * 0.012) * 1.5
     const i = Math.min(GN - 2, Math.floor(u)), j = Math.min(GN - 2, Math.floor(v)), fu = u - i, fv = v - j, a = (ii, jj) => tot[jj * GN + ii]
     const d = (a(i, j) * (1 - fu) + a(i + 1, j) * fu) * (1 - fv) + (a(i, j + 1) * (1 - fu) + a(i + 1, j + 1) * fu) * fv
-    return 2 + Math.sqrt(d / (fmax || 1)) * 14
+    return 2 + Math.pow(d / (fmax || 1), 0.6) * 26
   }
   const nodoXY = id => { if (id === 'piazza') return [D.piazza.x, D.piazza.y]; const c = costr.find(x => x.id === id); return c?.pos?.x != null ? [c.pos.x, c.pos.y] : null }
   const strade = costr.filter(c => c.tipo === 'strada').map(c => ({ c, a: nodoXY(c.a), b: nodoXY(c.b) })).filter(s => s.a && s.b)
@@ -125,7 +144,8 @@
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvMondo = (modelMatrix*vec4(position,1.)).xyz;')
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo;').replace('#include <color_fragment>', `#include <color_fragment>
         vec2 gu = vec2((vMondo.x/${S.toFixed(3)}+${cxT.toFixed(2)})/1000., (vMondo.z/${S.toFixed(3)}+${cyT.toFixed(2)})/1000.); vec3 g = texture2D(geo, gu).rgb * step(0., gu.x)*step(gu.x,1.)*step(0.,gu.y)*step(gu.y,1.);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.025,.04,.065), g.r*.85); diffuseColor.rgb += vec3(.05,.045,.04)*g.g + vec3(.0,.01,.03)*g.b;`)
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.025,.04,.065), g.r*.85); diffuseColor.rgb += vec3(.05,.045,.04)*g.g + vec3(.0,.01,.03)*g.b;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.07,.15,.08), .45 + .5*smoothstep(3., 26., vMondo.y));`)
         .replace('#include <fog_fragment>', `#include <fog_fragment>
         gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(.035,.038,.045), smoothstep(occhio.z * .45, occhio.z * 1.25, length(vMondo.xz - occhio.xy)));`)
     }
@@ -251,7 +271,7 @@
     const fronte = 0 // tutte rivolte allo stesso verso, come le pagine di un atlante aperto
     const resto = D.punti.filter(p => !meshDi.has(p.id))
     for (const p of resto.filter(p => p.img || p.mini)) {
-      const x = X(p.x), z = Z(p.y), k = 0.35 + (p.i ?? 0.3), W = 4 + 9 * k, H = W * 1.25, y = altezza(x, z) + 12 + 46 * (p.i ?? 0.3)
+      const x = X(p.x), z = Z(p.y), k = 0.35 + (p.i ?? 0.3), W = 4 + 9 * k, H = W * 1.25, y = altezza(x, z) + H / 2 + 1 + 14 * (p.i ?? 0.3) ** 2
       const m = new THREE.Mesh(new THREE.PlaneGeometry(W, H), tavolaMatDa(p.img ? `img/${p.id}.jpg` : `mini/${p.id}.jpg`)); m.position.set(x, y, z); m.rotation.y = fronte
       const cornice = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.7, H + 0.7), new THREE.MeshBasicMaterial({ color: 0xd9dbe6 })); cornice.position.copy(m.position); cornice.rotation.y = fronte; cornice.translateZ(-0.08)
       scena.add(cornice); scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m); meshDi.set(p.id, { m, w: W, h: H, aTerra: false, cornice })
@@ -277,31 +297,6 @@
       const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = 4
       const cm = new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false }); cartMat.push(cm); scena.add(new THREE.Mesh(geo, cm))
     }
-  }
-
-  // la rete: ogni tavola sale con un filo dritto al nodo del suo territorio (sopra la sala); i nodi si legano tra loro
-  // con archi alti, tanto più spessi di colore quanto più fili passano tra le due aree. Ordine, non groviglio.
-  {
-    const nodi = new Map()
-    for (const [id, o] of meshDi) { const p = posDi.get(id); if (!p || p.q == null) continue; if (!nodi.has(p.q)) nodi.set(p.q, { s: new THREE.Vector3(), n: 0, top: -1e9, membri: [] }); const N = nodi.get(p.q), v = o.m.position; N.s.add(v); N.n++; N.top = Math.max(N.top, v.y + (o.h ?? 10) / 2); N.membri.push(o) }
-    const lin = [], col = []
-    const seg = (A, B, r, g, b) => { lin.push(A.x, A.y, A.z, B.x, B.y, B.z); col.push(r, g, b, r, g, b) }
-    for (const N of nodi.values()) {
-      N.c = N.s.clone().multiplyScalar(1 / N.n); N.c.y = N.top + 22
-      const ds = N.membri.map(o => o.m.position.distanceTo(N.c)).sort((a, b) => a - b), lim = ds[Math.floor(ds.length * 0.6)] ?? 1e9
-      for (const o of N.membri) { const v = o.m.position; if (v.distanceTo(N.c) > lim) continue; seg(new THREE.Vector3(v.x, v.y + (o.h ?? 10) / 2, v.z), N.c, 0.045, 0.045, 0.042) }
-    }
-    // tra i territori: quanti fili li legano
-    const tra = new Map(); for (const f of D.fili ?? []) { const a = D.punti[f[0]]?.q, b = D.punti[f[1]]?.q; if (a == null || b == null || a === b || !nodi.has(a) || !nodi.has(b)) continue; const k = a < b ? a + '|' + b : b + '|' + a; tra.set(k, (tra.get(k) ?? 0) + f[2]) }
-    const arr = [...tra.entries()].sort((x, y) => y[1] - x[1]), top = arr[0]?.[1] ?? 1
-    const tenuti = new Map(); for (const [k] of arr) { const [a, b] = k.split('|'); const na = tenuti.get(a) ?? 0, nb = tenuti.get(b) ?? 0; if (na >= 3 && nb >= 3) continue; tenuti.set(a, na + 1); tenuti.set(b, nb + 1); const w = tra.get(k) / top, A = nodi.get(+a) ?? nodi.get(a), B = nodi.get(+b) ?? nodi.get(b); if (!A || !B) continue
-      const M = A.c.clone().lerp(B.c, 0.5); M.y += A.c.distanceTo(B.c) * 0.15; const cv = new THREE.QuadraticBezierCurve3(A.c, M, B.c).getPoints(24)
-      const [r, g, bb] = w > 0.6 ? [0.89, 0.21, 0.11] : [0.2 + 0.5 * w, 0.2 + 0.48 * w, 0.19 + 0.45 * w]
-      for (let i = 0; i < cv.length - 1; i++) seg(cv[i], cv[i + 1], r, g, bb) }
-    const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3)); gl.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
-    reteMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }); scena.add(new THREE.LineSegments(gl, reteMat))
-    const pn = new Float32Array(nodi.size * 3); [...nodi.values()].forEach((N, i) => pn.set([N.c.x, N.c.y, N.c.z], i * 3))
-    const gp = new THREE.BufferGeometry(); gp.setAttribute('position', new THREE.BufferAttribute(pn, 3)); scena.add(new THREE.Points(gp, new THREE.PointsMaterial({ color: 0xe8e2d6, size: 5, sizeAttenuation: false, transparent: true, opacity: 0.8, depthWrite: false })))
   }
 
   // ── gli interventi dei cittadini: lavorano sui piani delle tavole, che sono muri invisibili. Rilievi, parole,
@@ -402,7 +397,7 @@
   for (const c of costr.filter(c => c.tipo === 'torre')) { const a = c.pos?.angolo ?? caso() * 6.28, x = Math.max(-LX / 2 + 15, Math.min(LX / 2 - 15, PZ.x + Math.cos(a) * LX * 0.45)), z = Math.max(-LZ / 2 + 15, Math.min(LZ / 2 - 15, PZ.z + Math.sin(a) * LZ * 0.45)), y = altezza(x, z); etichetta(`<div class="s">un mondo scoperto</div><div class="t" style="font-size:12px">${esc(c.nome)}</div>`, new THREE.Vector3(x, y + 16, z), 700) }
   // il guardaroba: un posto in piazza dove si va a cambiarsi (un cerchio a terra e un appendiabiti)
   const GUARD = new THREE.Vector3(PZ.x - 40, 0, PZ.z + 34); GUARD.y = altezza(GUARD.x, GUARD.z)
-  { etichetta('<div class="t" style="font-size:13px">il guardaroba</div><div class="s">qui ci si cambia</div>', GUARD.clone().add(new THREE.Vector3(0, 18, 0)), 600) }
+  if (!D.vita) etichetta('<div class="t" style="font-size:13px">il guardaroba</div><div class="s">qui ci si cambia</div>', GUARD.clone().add(new THREE.Vector3(0, 18, 0)), 600)
   etichetta(`<div class="t">${esc(D.nome ?? 'La città senza nome')}</div><div class="s">la piazza · giorno ${D.giorno}</div>`, PZ.clone().add(new THREE.Vector3(0, 75, 0)), 4000)
   // i nomi delle strade
   for (const s of strade) { const nome = K.nomiVie?.[s.c.id]; if (!nome) continue; const pts = curvaStrada(s), [x, y] = pts[20], wx = X(x), wz = Z(y); etichetta(`<div class="s" style="font-style:italic;opacity:.8">${esc(nome)}</div>`, new THREE.Vector3(wx, altezza(wx, wz) + 4, wz), 650) }
@@ -410,30 +405,73 @@
   // ── gli abitanti: le figure di Porto Vecchio, vestite coi capi del guardaroba, che camminano per le strade ────
   const gente = []
   const viaPer = (a, b) => { const s = strade.find(s => (s.c.a === a && s.c.b === b) || (s.c.a === b && s.c.b === a)); if (!s) return null; const pts = curvaStrada(s).map(([x, y]) => { const wx = X(x), wz = Z(y); return new THREE.Vector3(wx, altezza(wx, wz), wz) }); return s.c.a === a ? pts : pts.reverse() }
-  // i luoghi del ciclo della giornata (le celle): la piazza al centro, gli altri attorno; ognuno ha il suo nome nel mondo
-  const LUOGHI = { piazza: PZ.clone(), assemblea: PZ.clone().add(new THREE.Vector3(18, 0, 14)), biblioteca: PZ.clone().add(new THREE.Vector3(-70, 0, 34)), bottega: PZ.clone().add(new THREE.Vector3(64, 0, 44)), osservatorio: PZ.clone().add(new THREE.Vector3(10, 0, -84)), archivio: PZ.clone().add(new THREE.Vector3(-52, 0, -56)), guardaroba: GUARD.clone() }
-  for (const [k, v] of Object.entries(LUOGHI)) { v.y = altezza(v.x, v.z); if (k !== 'piazza' && k !== 'guardaroba') etichetta(`<div class="s" style="letter-spacing:.12em;text-transform:uppercase;opacity:.75">${k}</div>`, v.clone().add(new THREE.Vector3(0, 14, 0)), 900, 'luogo') }
-  // la giornata di ognuno, dal verbale di oggi: dove è passato e in che ordine (casa → … → casa)
-  const verbaleOggi = D.giornate?.[0]?.verbale ?? []
-  const percorsoDi = (a, casa) => { const f = []; for (const v of verbaleOggi) if (v.chi === a.id && LUOGHI[v.fase] && f[f.length - 1] !== v.fase) f.push(v.fase); if (!f.length) f.push('piazza'); return [casa, ...f.map(x => LUOGHI[x].clone().add(new THREE.Vector3((caso() - 0.5) * 16, 0, (caso() - 0.5) * 16))), casa] }
+  // ── la vita: i luoghi dove vivono (piazza, mensa, biblioteca, bottega, officina, osservatorio, archivio, assemblea,
+  // guardaroba, fontana, orto, le case, i confini, le strade), le vie che consumano camminando, e quello che lasciano.
+  const VI = D.vita, LG = new Map(), W = l => { const x = X(l.x), z = Z(l.y); return new THREE.Vector3(x, altezza(x, z), z) }
+  const LUOGHI = {}
+  if (VI) for (const l of VI.luoghi) { const v = W(l); LG.set(l.id, { l, v }); LUOGHI[l.id] = v
+    if (!['casa', 'strada', 'sala'].includes(l.tipo)) etichetta(`<div class="s" style="letter-spacing:.12em;text-transform:uppercase;opacity:.7">${esc(l.nome)}</div>`, v.clone().add(new THREE.Vector3(0, 10, 0)), l.tipo === 'confine' ? 420 : 900, 'luogo') }
+  else Object.assign(LUOGHI, { piazza: PZ.clone() })
+  if (VI) {
+    // le vie: dove passano spesso diventano sentieri chiari, tanto più larghi quanto più battuti (desideri, non progetti)
+    const vmax = Math.max(1, ...VI.vie.map(v => v[2]))
+    const vg = [], vc = []
+    for (const [a, b, n] of VI.vie.slice().sort((x, y) => y[2] - x[2]).slice(0, 70)) { const A = LG.get(a)?.v, B = LG.get(b)?.v; if (!A || !B || n < 3) continue
+      const k = Math.log(1 + n) / Math.log(1 + vmax), M = A.clone().lerp(B, 0.5), off = new THREE.Vector3(-(B.z - A.z), 0, B.x - A.x).normalize().multiplyScalar(A.distanceTo(B) * 0.08 * (((a.length + b.length) % 3) - 1))
+      M.add(off); const pts = new THREE.QuadraticBezierCurve3(A, M, B).getPoints(16)
+      for (let t = 0; t < pts.length - 1; t++) { const P = pts[t], Q = pts[t + 1]; P.y = altezza(P.x, P.z) + 0.25; Q.y = altezza(Q.x, Q.z) + 0.25; vg.push(P.x, P.y, P.z, Q.x, Q.y, Q.z); const c = 0.18 + 0.55 * k; vc.push(c, c * 0.93, c * 0.82, c, c * 0.93, c * 0.82) } }
+    const gv = new THREE.BufferGeometry(); gv.setAttribute('position', new THREE.Float32BufferAttribute(vg, 3)); gv.setAttribute('color', new THREE.Float32BufferAttribute(vc, 3))
+    scena.add(new THREE.LineSegments(gv, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false })))
+    // le cose lasciate: ognuna nel suo modo, grande quanto è stata ripetuta
+    const hash = str => { let h = 2166136261; for (const ch of str) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return () => ((h = Math.imul(h ^ (h >>> 13), 1274126177)) >>> 0) / 4294967296 }
+    const tela = (t, w, h) => { // una piccola composizione: il gesto di chi l'ha fatta, coi suoi colori, sempre diversa
+      const cv = document.createElement('canvas'); cv.width = 128; cv.height = 160; const g = cv.getContext('2d'), rr = hash(t.id)
+      g.fillStyle = '#e8e2d6'; g.fillRect(0, 0, 128, 160); g.fillStyle = t.colore ?? '#e3361b'
+      const modo = ({ stampa: 'retino', scritta: 'segno', opera: 'collage', macchia: 'macchia', festa: 'righe' })[t.tipo] ?? 'collage'
+      if (modo === 'retino') { for (let y = 6; y < 160; y += 8) for (let x = 6; x < 128; x += 8) { const r0 = 3.4 * (0.5 + 0.5 * Math.sin(x * 0.05 + y * 0.03 + rr() * 6)); g.beginPath(); g.arc(x, y, r0, 0, 7); g.fill() } }
+      else if (modo === 'segno') { g.lineWidth = 6; g.strokeStyle = t.colore; g.beginPath(); let x = 10, y = 30 + rr() * 30; g.moveTo(x, y); for (let k = 0; k < 9; k++) { x += 12; y += (rr() - 0.5) * 50; g.lineTo(x, Math.max(10, Math.min(150, y))) } g.stroke() }
+      else if (modo === 'righe') { for (let k = 0; k < 8; k++) { g.fillStyle = k % 2 ? t.colore : '#1b1b1b'; g.fillRect(0, k * 20, 128, 10) } }
+      else for (let k = 0; k < 3 + t.volte % 5; k++) { g.fillStyle = k % 2 ? t.colore : ['#1b1b1b', '#3b6fd8', '#e8c547'][k % 3]; g.globalAlpha = 0.85; g.fillRect(rr() * 90, rr() * 120, 20 + rr() * 60, 14 + rr() * 50) }
+      g.globalAlpha = 1; g.fillStyle = '#1b1b1b'; g.font = '600 11px Inter, sans-serif'; g.fillText((t.nome ?? '').slice(0, 20), 6, 152)
+      const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide })) }
+    const albero = (P, alto, col) => { // un alberello che cresce con le cure: rami che si dividono
+      const lin = [], rr = hash(P.x.toFixed(1)), ramo = (a, dir, len, d) => { const b = a.clone().addScaledVector(dir, len); lin.push(a.x, a.y, a.z, b.x, b.y, b.z); if (d <= 0) return; for (let k = 0; k < 2 + (rr() < 0.3 ? 1 : 0); k++) { const nd = dir.clone().add(new THREE.Vector3((rr() - 0.5) * 1.2, 0.3 + rr() * 0.4, (rr() - 0.5) * 1.2)).normalize(); ramo(b, nd, len * 0.7, d - 1) } }
+      ramo(P.clone(), new THREE.Vector3(0, 1, 0), alto * 0.35, Math.min(5, 2 + Math.floor(alto / 6)))
+      const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3)); scena.add(new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.85 }))) }
+    // di ogni luogo restano in vista le cose più riprese e le più recenti (le altre restano nella storia), disposte attorno
+    const perLuogo = new Map(), oggiG = D.giorno ?? 0
+    const vive = VI.tracce.filter(t => t.volte >= 2 || oggiG - t.ultimo < 6).sort((a, b) => b.volte - a.volte).filter(t => { const n = perLuogo.get(t.luogo + t.tipo) ?? 0; perLuogo.set(t.luogo + t.tipo, n + 1); return n < (['opera', 'stampa', 'scritta'].includes(t.tipo) ? 6 : 3) })
+    const giro = new Map()
+    for (const t of vive) {
+      if (['opera', 'stampa', 'scritta', 'festa'].includes(t.tipo)) { const n = giro.get(t.luogo) ?? 0; giro.set(t.luogo, n + 1); const L = LG.get(t.luogo)?.l; if (L) { const an = n * 2.39996, d = 10 + 3.2 * Math.sqrt(n) * 2; t.x = L.x + Math.cos(an) * d; t.y = L.y + Math.sin(an) * d } }
+      const x = X(t.x), z = Z(t.y), y = altezza(x, z), k = Math.min(1, Math.log(1 + t.volte) / Math.log(30))
+      if (t.tipo === 'pianta') albero(new THREE.Vector3(x, y, z), 4 + 16 * k, t.nome ? 0x9fd3a7 : 0x6fa37a)
+      else if (t.tipo === 'macchia' || t.tipo === 'scavo') { const m = new THREE.Mesh(new THREE.CircleGeometry(2 + 7 * k, 24), new THREE.MeshBasicMaterial({ color: t.tipo === 'scavo' ? 0x3a3128 : t.colore, transparent: true, opacity: 0.55, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x, y + 0.2, z); scena.add(m) }
+      else if (t.tipo === 'incontro') { const m = new THREE.Mesh(new THREE.RingGeometry(2 + 6 * k, 2.6 + 6 * k, 32), new THREE.MeshBasicMaterial({ color: 0xe8e2d6, transparent: true, opacity: 0.25, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x, y + 0.25, z); scena.add(m)
+        const b = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 1.2), new THREE.MeshStandardMaterial({ color: 0x8a7258 })); b.position.set(x, y + 0.9, z); scena.add(b) }
+      else if (['opera', 'stampa', 'scritta', 'festa'].includes(t.tipo)) { // in piedi, appoggiate o appese: ognuna come l'ha voluta chi l'ha fatta
+        const rr = hash(t.id), w = 2.5 + 3.5 * k, m = tela(t, w, w * 1.25); m.position.set(x, y + w * 0.62 + (t.tipo === 'festa' ? 8 : 0), z); m.rotation.y = rr() * Math.PI * 2; m.rotation.z = (rr() - 0.5) * 0.25
+        if (t.tipo === 'opera' && rr() < 0.3) { m.rotation.x = -Math.PI / 2 + 0.2; m.position.y = y + 0.4 } // a terra, come un tappeto
+        scena.add(m); m.userData = { tipo: 'traccia', t }; cliccabili.push(m) }
+      else { const m = new THREE.Mesh(new THREE.SphereGeometry(0.6 + 1.2 * k, 10, 8), new THREE.MeshBasicMaterial({ color: t.colore ?? 0xe8e2d6 })); m.position.set(x, y + 3 + 2 * k, z); scena.add(m) }
+    }
+  }
+  // l'orologio della città: un giorno intero ogni quattro minuti; ognuno va dove la sua giornata lo porta a quell'ora
+  const OR = { el: document.createElement('div'), giorno: 240 }
+  OR.el.style.cssText = 'position:fixed;top:18px;right:18px;font:12px/1.4 JetBrains Mono,monospace;color:#e8e2d6;opacity:.75;z-index:5;letter-spacing:.08em'; document.body.appendChild(OR.el)
+  const oraFissa = +new URLSearchParams(location.search).get('ora') || null
+  const oraCitta = () => oraFissa ?? ((performance.now() / 1000) % OR.giorno) / OR.giorno * 24
   try {
     await Promise.all(['Casual', 'Casual_2', 'Casual_Hoodie', 'Formal', 'Worker'].map(f => Models.loadChar(f)))
     for (const a of D.abitanti) {
       const Dp = Personaggi.descrittore({ fem: !!a.fem }, null, { id: a.id }, a.vesti?.length ? a.vesti : undefined)
       const g = Personaggi.figura(Dp, null); if (!g) continue
-      g.scale.setScalar(7); g.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material && 'emissive' in o.material) { o.material = o.material.clone(); o.material.emissive = o.material.color.clone().multiplyScalar(0.35) } } }); scena.add(g)
-      // il percorso: dalla sua sala (se ne cura una) alla piazza per le strade, una sosta tra le tavole, ogni tanto il guardaroba
-      const mia = sale.find(s => s.sala?.curatore === a.id) ?? sale.find(s => s.c.chi === a.id)
-      let giro = []
-      if (mia) {
-        const via = viaPer(mia.c.id, 'piazza') ?? strade.map(s => s.c.a === mia.c.id ? viaPer(mia.c.id, s.c.b) : s.c.b === mia.c.id ? viaPer(mia.c.id, s.c.a) : null).find(Boolean)
-        giro = [mia.centro.clone(), ...(via ?? [PZ.clone()]), ...(via ? via.slice().reverse() : [])]
-      } else { for (let k = 0; k < 5; k++) { const an = caso() * Math.PI * 2, rr = 15 + caso() * (a.tipo === 'scienziato' ? 140 : 60); const x = PZ.x + Math.cos(an) * rr, z = PZ.z + Math.sin(an) * rr; giro.push(new THREE.Vector3(x, altezza(x, z), z)) } }
-      { const casa = mia ? mia.centro.clone() : new THREE.Vector3(X(a.casa?.x ?? D.piazza.x), 0, Z(a.casa?.y ?? D.piazza.y)); casa.y = altezza(casa.x, casa.z); giro = percorsoDi(a, casa) } // la sua giornata, così come è andata
-      if (caso() < 0.3) giro.splice(1, 0, GUARD.clone().add(new THREE.Vector3(0, 0, 8)))
-      g.position.copy(giro[0])
+      g.scale.setScalar(9); g.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material && 'emissive' in o.material) { o.material = o.material.clone(); o.material.emissive = o.material.color.clone().multiplyScalar(0.45) } } }); scena.add(g)
+      const ore = VI?.ab?.[a.id]?.oggi ?? [], rr = caso, scarto = new THREE.Vector3((rr() - 0.5) * 9, 0, (rr() - 0.5) * 9)
+      const posOra = h => { const o = ore[Math.floor(h) % 24]; const v = o ? (LUOGHI[o.luogo]?.clone() ?? W(o)) : PZ.clone(); v.add(scarto); v.y = altezza(v.x, v.z); return v }
+      g.position.copy(posOra(oraCitta()))
       const presa = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 2.6, 8), new THREE.MeshBasicMaterial({ visible: false })); presa.position.y = 0.9; g.add(presa); presa.userData = { tipo: 'abitante', a }; cliccabili.push(presa)
-      gente.push({ g, a, giro, i: 1, sosta: caso() * 3, vel: 14 + caso() * 5 })
+      gente.push({ g, a, ore, posOra, vel: 16 + rr() * 6 })
     }
   } catch (e) { console.warn('figure di Porto Vecchio non caricate:', e) }
 
@@ -457,7 +495,20 @@
   function schedaPiazza() { const G = D.giornate[0]; let h = `<div class="meta">la piazza · giornata ${G?.cittaGiorno ?? ''}</div><h2>${esc(D.nome ?? 'La città senza nome')}</h2><p>Al centro la tavola più amata, stesa a terra e sollevata in rilievo dalla sua stessa luce. Qui si discute, si vota, si decide.</p>`; { const cariche = new Map(); for (const a of D.abitanti) { const k = a.carica || a.tipo; if (!cariche.has(k)) cariche.set(k, []); cariche.get(k).push(a.nome) } h += `<div class="meta">chi abita la città · ${D.abitanti.length}</div>${[...cariche].map(([k, l]) => `<div class="riga"><b>${esc(k)}</b> ${l.map(esc).join(', ')}</div>`).join('')}` } if (D.decisioni.length) h += `<div class="meta">decisioni</div>${D.decisioni.slice(0, 6).map(d => `<div class="riga">${esc(d.cosa)} <span style="opacity:.5">${esc(d.stato)}${d.esito ? ` · ${esc(d.esito)}` : ''}</span></div>`).join('')}`; if (D.cantieri.length) h += `<div class="meta" style="margin-top:14px">cantieri</div>${D.cantieri.map(c => `<div class="riga">${esc(c.cosa)}<br><span style="opacity:.55">${c.passi.map(p => `${esc(p.testo)} (${esc(p.dove)}, ${esc(p.stato)})`).join(' · ')}</span></div>`).join('')}`; if (D.officina.length) h += `<div class="meta" style="margin-top:14px">l'officina</div>${D.officina.map(o => `<div class="riga">${esc(o.nome)} <span style="opacity:.5">di ${esc(o.autore)}</span><br><span class="mono" style="font-size:11px;opacity:.6">${esc(o.testo)}</span></div>`).join('')}`; return h }
   function schedaOss() { const Os = D.osservatorio; if (!Os) return ''; return `<div class="meta">l'osservatorio · ${Os.campioni} mondi misurati</div><h2>La biblioteca degli universi</h2><p>La chimica, l'astronoma, l'astrofisico e la filosofa della scienza sfogliano il simulatore di universi: misurano mondi, mettono alla prova ipotesi, portano in piazza le scoperte. Ai margini, il nome di ogni mondo che somiglia al nostro.</p><div class="meta" style="margin-top:14px">scoperte</div>${Os.scoperte.map(s => `<div class="riga"><b>mondo ${s.n}</b> <span style="opacity:.55">(${esc(nomeDi(s.chi))})</span><br>${esc(s.testo)}</div>`).join('')}${Os.ipotesi.length ? `<div class="meta" style="margin-top:14px">ipotesi messe alla prova</div>${Os.ipotesi.map(h => `<div class="riga">${h.stato === 'regge' ? 'regge' : 'cade'} · ${esc(h.testo)} <span style="opacity:.5">fiducia ${Math.round(h.fiducia * 100)}%</span></div>`).join('')}` : ''}` }
   function schedaVerbale() { const G = D.giornate[0]; if (!G) return '<p>La città è appena nata.</p>'; let h = `<div class="meta">il verbale · giornata ${G.cittaGiorno}</div><h2>Cosa si sono detti oggi</h2>`, fase = ''; for (const b of G.verbale) { if (b.fase !== fase) { fase = b.fase; h += `<div class="meta" style="margin-top:14px">${esc(fase)}</div>` } h += `<div class="riga"><b>${esc(nomeDi(b.chi))}</b> ${esc(b.testo)}</div>` }; return h }
-  function schedaAbitante(a) { return `<div class="meta">${esc(a.carica)}</div><h2>${esc(a.nome)}</h2><p>${a.n ? `${a.n} tavole nel suo insieme.` : 'Abita la piazza.'}</p>${a.vesti?.length ? `<div class="meta">addosso</div><p>${a.vesti.map(v => esc(v.id.replace(/_/g, ' '))).join(', ')}</p>` : ''}` }
+  function schedaAbitante0(a) { return `<div class="meta">${esc(a.carica)}</div><h2>${esc(a.nome)}</h2><p>${a.n ? `${a.n} tavole nel suo insieme.` : 'Abita la piazza.'}</p>${a.vesti?.length ? `<div class="meta">addosso</div><p>${a.vesti.map(v => esc(v.id.replace(/_/g, ' '))).join(', ')}</p>` : ''}` }
+  function schedaAbitante(a) {
+    const v = D.vita?.ab?.[a.id]; if (!v) return schedaAbitante0(a)
+    const barra = (k, x) => `<div style="display:flex;gap:8px;align-items:center;font-size:12px"><span style="width:86px;opacity:.7">${k}</span><div style="flex:1;height:4px;background:rgba(232,226,214,.12)"><div style="height:4px;width:${Math.round(x * 100)}%;background:${x > 0.8 ? '#e3361b' : '#e8e2d6'}"></div></div></div>`
+    const h = Math.floor(oraCitta()), ora = v.oggi?.[h]
+    return schedaAbitante0(a) + `<div class="meta" style="margin-top:14px">adesso, ore ${h}</div><p>${esc(ora ? ora.fa : '')}${ora?.con?.length ? `, con ${ora.con.map(nomeDi).map(esc).join(', ')}` : ''}.</p>`
+      + (v.pensiero ? `<p style="opacity:.8"><i>${esc(v.pensiero)}</i></p>` : '')
+      + `<div class="meta">i bisogni</div>${Object.entries(v.bisogni).map(([k, x]) => barra(k, x)).join('')}`
+      + `<div class="meta" style="margin-top:12px">gli piacciono</div><p>${v.interessi.map(esc).join(', ')}</p>`
+      + (v.amici.length ? `<div class="meta">amici</div><p>${v.amici.map(nomeDi).map(esc).join(', ')}</p>` : '') + (v.rivali.length ? `<div class="meta">non si prendono</div><p>${v.rivali.map(nomeDi).map(esc).join(', ')}</p>` : '')
+      + (v.progetti.length ? `<div class="meta">progetti</div>${v.progetti.map(p => `<div class="riga">${esc(p.label)} <span style="opacity:.5">${esc(p.stato)} · ${p.passo}</span></div>`).join('')}` : '')
+      + `<div class="meta" style="margin-top:12px">la sua giornata</div>${(v.oggi ?? []).filter((o, i, l) => !i || o.fa !== l[i - 1].fa).map(o => `<div class="riga"><span style="opacity:.5">${String(o.h).padStart(2, '0')}</span> ${esc(o.fa)}</div>`).join('')}`
+      + (v.diario?.length ? `<div class="meta" style="margin-top:12px">il diario</div>${v.diario.map(d => `<div class="riga">${esc(d)}</div>`).join('')}` : '')
+  }
   document.getElementById('apri').onclick = () => scheda(schedaVerbale())
 
   // ── volare e toccare ──────────────────────────────────────────────────────────────────────────────────
@@ -475,6 +526,7 @@
     const o = ray.intersectObjects(cliccabili, false)[0]?.object; if (!o) return
     const u = o.userData
     if (u.tipo === 'parola') { scheda(schedaParola(u.P)); return }
+    if (u.tipo === 'traccia') { const t = u.t, L = D.vita.luoghi.find(l => l.id === t.luogo), NOMI = { opera: "un'opera", stampa: 'una stampa', scritta: 'una scritta', festa: 'una festa' }; scheda(`<div class="meta">${NOMI[t.tipo] ?? t.tipo} · dal giorno ${t.dal}</div><h2>${esc(t.nome ?? (NOMI[t.tipo] ?? t.tipo))}</h2><p>${esc(L?.nome ?? '')}. Di ${t.chi.map(nomeDi).map(esc).join(', ')}. Ripresa ${t.volte} volte, l'ultima il giorno ${t.ultimo}.</p>`); return }
     if (u.tipo === 'tavola' && u.nota) { scheda(schedaTavola(u.p, `<p style="opacity:.6">${esc(u.nota)}</p>`)); return }
     if (u.tipo === 'tavola') scheda(schedaTavola(u.p, u.graffito ? `<p style="opacity:.6">Lasciata di notte da ${esc(u.graffito)} in una radura che non era sua.</p>` : u.monumento ? '<p style="opacity:.6">Il monumento della città: la tavola più amata.</p>' : ''))
     else if (u.a) scheda(schedaAbitante(u.a))
@@ -503,14 +555,15 @@
     const ora = performance.now(), dt = Math.min(0.05, (ora - prima) / 1000); prima = ora
     if (volo) { const k = Math.min(1, (ora - volo.t0) / 1500), e = k * k * (3 - 2 * k); O.t.lerpVectors(volo.da.t, volo.a.t, e); O.dist = volo.da.dist + (volo.a.dist - volo.da.dist) * e; O.pitch = volo.da.pitch + (volo.a.pitch - volo.da.pitch) * e; O.yaw = volo.da.yaw + (volo.a.yaw - volo.da.yaw) * e; if (k >= 1) volo = null }
     metti()
-    for (const p of gente) {
-      const meta = p.giro[p.i], d = meta.clone().sub(p.g.position).setY(0), dist = d.length()
-      let speed = 0, anim = null
-      if (p.sosta > 0) { p.sosta -= dt; anim = p.i === 1 || p.i === 0 ? { act: 'Interact' } : null }
-      else if (dist < 1.2) { p.i = (p.i + 1) % p.giro.length; p.sosta = p.i <= 1 ? 2 + caso() * 5 : 0 }
-      else { const passo = Math.min(dist, p.vel * dt); p.g.position.addScaledVector(d.normalize(), passo); p.g.position.y = altezza(p.g.position.x, p.g.position.z); p.g.rotation.y = Math.atan2(d.x, d.z); speed = 1.2 }
-      try { Models.animPerson(p.g, { speed, anim }, dt) } catch (_) { /* resta ferma */ }
-    }
+    { const h = oraCitta(); OR.el.textContent = `ore ${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')} · giornata ${D.giorno ?? ''}`
+      for (const p of gente) {
+        const meta = p.posOra(h), d = meta.clone().sub(p.g.position).setY(0), dist = d.length(), o = p.ore[Math.floor(h) % 24]
+        let speed = 0, anim = null
+        if (dist > 1.2) { const passo = Math.min(dist, Math.max(p.vel, dist * 0.6) * dt); p.g.position.addScaledVector(d.normalize(), passo); p.g.position.y = altezza(p.g.position.x, p.g.position.z); p.g.rotation.y = Math.atan2(d.x, d.z); speed = 1.2 }
+        else if (o && !/dorme/.test(o.fa)) anim = { act: 'Interact' }
+        p.g.visible = !(o && /dorme/.test(o.fa) && dist < 1.2) // chi dorme è in casa
+        try { Models.animPerson(p.g, { speed, anim }, dt) } catch (_) { /* resta ferma */ }
+      } }
     { const vic = Math.max(0, Math.min(1, 1 - (O.dist - 150) / 350)); for (const m of cartMat) m.opacity = 0.9 * vic } // i cartellini si leggono solo da vicino
     const tt = ora / 1000; for (const m of fondiVivi) m.uniforms.u_time.value = tt; for (const m of ologrammi) m.uniforms.t.value = tt
     { const ry = Math.round((O.yaw - Math.PI / 4) / (Math.PI / 2)) * (Math.PI / 2); for (const m of scritte) m.rotation.y = ry }
