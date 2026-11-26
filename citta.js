@@ -3,8 +3,13 @@
 // tra le sale più legate come le reti di una muffa che collega il cibo. Le sale sono radure di tavole in piedi, disposte
 // dal curatore che le abita. In piazza la tavola più amata, resa in rilievo. Niente modelli: solo le immagini e il codice che fa il suolo. Gli abitanti sono le figure di Porto Vecchio.
 // Nessun edificio: le architetture sono metafore della crescita, non oggetti. Motore: il three di Porto Vecchio (globale).
-(async function () {
+// un cartello mentre la città si costruisce (sul telefono ci mette un po'), e il motivo se non ce la fa
+const CARTELLO = (() => { const d = document.createElement('div'); d.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:#06050a;color:#e8e2d6;font:13px/1.5 JetBrains Mono,monospace;letter-spacing:.08em;z-index:50;text-align:center;padding:24px;transition:opacity .6s'
+  d.innerHTML = '<div style="font:500 18px Inter,sans-serif;letter-spacing:0">la città si sta costruendo</div><div class="passo" style="opacity:.6">i luoghi, le strade, le stanze, gli abitanti…</div>'; (document.body ? Promise.resolve() : new Promise(r => addEventListener('DOMContentLoaded', r))).then(() => document.body.appendChild(d))
+  return { passo: t => { const q = d.querySelector('.passo'); if (q) q.textContent = t }, via: () => { d.style.opacity = 0; setTimeout(() => d.remove(), 700) }, errore: e => { d.querySelector('.passo').innerHTML = 'non ce l\'ha fatta: ' + String(e).replace(/[<>&]/g, '') + '<br><br>prova a riaprire la pagina (o dal computer)' } } })()
+;(async function () {
   'use strict'
+  CARTELLO.passo('scarico la memoria della città…')
   const D = await (await fetch('citta.json', { cache: 'no-store' })).json()
   if (D.vita?.popolo?.length) D.abitanti = [...D.abitanti, ...D.vita.popolo] // il popolo: tutti gli abitanti, non solo chi discute in piazza
   const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
@@ -42,8 +47,17 @@
   // ── motore ────────────────────────────────────────────────────────────────────────────────────────────
   const cv = document.getElementById('mondo')
   const R = new THREE.WebGLRenderer({ canvas: cv, antialias: true })
-  R.setPixelRatio(Math.min(2, devicePixelRatio)); R.setSize(innerWidth, innerHeight); R.outputEncoding = THREE.sRGBEncoding
-  R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.0; R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap
+  const SENZA = new URLSearchParams(location.search).get('senza') ?? '' // per le prove di peso
+  const LIBERABILI = new Set() // tele già caricate sulla scheda grafica, che dopo la prima volta non servono più in memoria
+  const LEGGERA = matchMedia('(pointer: coarse)').matches || innerWidth < 900 // sul telefono (e nel browser di Instagram) la città si alleggerisce
+  // sul telefono i pannelli non coprono la città: l'elenco delle sale si apre col bottone, la redazione e l'aiuto si nascondono
+  if (innerWidth < 760) { const st = document.createElement('style'); st.textContent = `#indice{display:none!important}body.indice #indice{display:block!important;position:fixed;inset:0;overflow:auto;z-index:20;background:rgba(6,5,10,.94);padding:70px 22px 30px}
+    #redazione,#aiuto{display:none!important}header p,header .sotto{display:none}header h1{font-size:20px!important}#apri{right:12px!important;bottom:12px!important;font-size:10px!important;padding:8px 10px!important}
+    #sale-bt{position:fixed;left:12px;bottom:12px;z-index:21;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.16em;text-transform:uppercase;background:rgba(12,13,17,.75);color:#e8e6e1;border:1px solid rgba(232,226,214,.3);padding:8px 10px}`; document.head.appendChild(st)
+    const bt = document.createElement('button'); bt.id = 'sale-bt'; bt.textContent = 'le sale'; bt.onclick = () => { document.body.classList.toggle('indice'); bt.textContent = document.body.classList.contains('indice') ? 'la città' : 'le sale' }; document.body.appendChild(bt)
+    document.addEventListener('click', e => { if (e.target.closest?.('#indice button')) { document.body.classList.remove('indice'); bt.textContent = 'le sale' } }) }
+  R.setPixelRatio(Math.min(LEGGERA ? 1.25 : 2, devicePixelRatio)); R.setSize(innerWidth, innerHeight); R.outputEncoding = THREE.sRGBEncoding
+  R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.0; R.shadowMap.enabled = !LEGGERA; R.shadowMap.type = THREE.PCFSoftShadowMap
   const scena = new THREE.Scene(); scena.fog = null
   // la luce a fasce di Porto Vecchio (render.js [fumetto], ricetta minima): due gradini netti nella luce diretta, un po' di blu nell'ombra
   { const DNL = 'float dotNL = saturate( dot( geometry.normal, directLight.direction ) );', C = THREE.ShaderChunk
@@ -249,6 +263,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   var reteMat = null, cartMat = []
 
   const PZ = new THREE.Vector3(X(D.piazza.x), 0, Z(D.piazza.y)); PZ.y = altezza(PZ.x, PZ.z)
+  CARTELLO.passo('traccio le strade dalle parole…'); await new Promise(r => setTimeout(r, 30))
   // ── le stanze di ogni luogo, composte da Porto Vecchio (interiors.js): servono già all'urbanista, per sapere quanto è grande
   // ogni lotto (fronte sulla strada e profondità), e poi all'arredatore. Una volta sola per luogo. ───────────────────────────
   const USI_P = { mensa: ['trattoria', ['sala_trattoria', 'cucina_trattoria']], biblioteca: ['biblioteca', ['lettura', 'scaffali', 'archivio']], bottega: ['tipografia', ['tipografia', 'ufficio']], officina: ['officina', ['officina']],
@@ -682,7 +697,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
         const [px, pz, ux, uz] = puntoSu(s, lungo), nx = sd ? -uz : uz, nz = sd ? ux : -ux
         t.wx = px + nx * off; t.wz = pz + nz * off; t.wy = 1.4 + alto + t.H / 2; t.ry = Math.atan2(-nx, -nz) } }
     // le tavole con l'immagine: un piano e la sua cornice chiara
-    for (const t of lista) { if (t.wx == null || !t.con) continue; const { p, W, H } = t, x = t.wx, z = t.wz, y = t.wy, fronte = t.ry
+    for (const t of lista) { if (t.wx == null || !t.con || SENZA.includes('tavole')) continue; const { p, W, H } = t, x = t.wx, z = t.wz, y = t.wy, fronte = t.ry
       const m = new THREE.Mesh(new THREE.PlaneGeometry(W, H), tavolaMatDa(p.img ? `img/${p.id}.jpg` : `mini/${p.id}.jpg`)); m.position.set(x, y, z); m.rotation.y = fronte
       const cornice = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.7, H + 0.7), new THREE.MeshBasicMaterial({ color: 0xd9dbe6 })); cornice.position.copy(m.position); cornice.rotation.y = fronte; cornice.translateZ(-0.08)
       scena.add(cornice); scena.add(m); m.userData = { tipo: 'tavola', p, nota: t.rel ? `Sta sul corso tra «${t.rel.A}» e «${t.rel.B}».` : '' }; cliccabili.push(m); meshDi.set(p.id, { m, w: W, h: H, aTerra: false, cornice })
@@ -690,7 +705,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     // le tavole che hanno solo il titolo: cartellini di carta col titolo stampato, su poche tele grandi (192 per tela)
     const senza = lista.filter(t => t.wx != null && !t.con), CW = 128, CH = 160, PER = 16 * 12
     for (let tt = 0; tt * PER < senza.length; tt++) {
-      const parte = senza.slice(tt * PER, (tt + 1) * PER), cv = document.createElement('canvas'); cv.width = 2048; cv.height = 1920; const g = cv.getContext('2d')
+      const parte = senza.slice(tt * PER, (tt + 1) * PER), cv = document.createElement('canvas'); cv.width = 1024; cv.height = 960; const g = cv.getContext('2d'); g.scale(0.5, 0.5) // a metà risoluzione: 13 tele da 4 MB invece che da 16
       const pos = [], uv = [], ind = []
       parte.forEach((t, i) => { const p = t.p
         const cx = (i % 16) * CW, cy = Math.floor(i / 16) * CH
@@ -705,7 +720,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
         uv.push(u0, v0, u1, v0, u1, v1, u0, v1); ind.push(b, b + 1, b + 2, b, b + 2, b + 3)
       })
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(ind)
-      const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = 4
+      const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = 4; LIBERABILI.add(tx)
       scena.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide })))
     }
   }
@@ -885,7 +900,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
       for (const L of URB.lotti.values()) { const r = (L.r ?? Math.max(L.lx, L.lz) / 2); x0 = Math.min(x0, L.x - r); x1 = Math.max(x1, L.x + r); z0 = Math.min(z0, L.z - r); z1 = Math.max(z1, L.z + r) }
       for (const s of URB.strade) for (const [x, z] of s.pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z) }
-      const cxS = (x0 + x1) / 2, czS = (z0 + z1) / 2, LS = Math.max(x1 - x0, z1 - z0) + 700, N = 2048, k = N / LS
+      const cxS = (x0 + x1) / 2, czS = (z0 + z1) / 2, LS = Math.max(x1 - x0, z1 - z0) + 700, N = LEGGERA ? 1024 : 1536, k = N / LS
       const cv = document.createElement('canvas'); cv.width = cv.height = N; const g = cv.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, N, N)
       const P = ([x, z]) => [(x - cxS + LS / 2) * k, (z - czS + LS / 2) * k]
       const traccia = (pts, w, col) => { g.strokeStyle = col; g.lineWidth = Math.max(1.5, w * k); g.beginPath(); const p0 = P(pts[0]); g.moveTo(...p0)
@@ -895,8 +910,8 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       for (const s of URB.strade.slice().sort((a, b) => ORD[a.rango] - ORD[b.rango])) {
         traccia(s.pts, s.largo, s.rango === 'sentiero' ? 'rgb(110,0,0)' : 'rgb(255,0,0)')
         if (s.rango === 'corso') traccia(s.pts, s.largo * 0.45, 'rgb(0,255,0)') }
-      const cv2 = document.createElement('canvas'); cv2.width = cv2.height = N; const g2 = cv2.getContext('2d'); g2.filter = 'blur(1.2px)'; g2.drawImage(cv, 0, 0)
-      const maschera = new THREE.CanvasTexture(cv2); maschera.minFilter = THREE.LinearFilter; maschera.generateMipmaps = false
+      const cv2 = document.createElement('canvas'); cv2.width = cv2.height = N; const g2 = cv2.getContext('2d'); g2.filter = 'blur(1.2px)'; g2.drawImage(cv, 0, 0); cv.width = cv.height = 1
+      const maschera = new THREE.CanvasTexture(cv2); maschera.minFilter = THREE.LinearFilter; maschera.generateMipmaps = false; LIBERABILI.add(maschera)
       const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96 })
       mat.onBeforeCompile = sh => {
         sh.uniforms.uMask = { value: maschera }; sh.uniforms.uB = { value: new THREE.Vector4(cxS - LS / 2, czS - LS / 2, LS, LS) }; sh.uniforms.uR = { value: new THREE.Vector4(cxS, czS, (LS - 700) * 0.5, LS * 0.48) }
@@ -969,7 +984,7 @@ float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }
     let PAVI = null; const ALIAS = { cementine: 'piastrelle', esagonette: 'cotto', seminato: 'graniglia', palladiana: 'marmo', ceramica70: 'piastrelle_b', quadrotte: 'parquet', mosaico: 'piastrelle', moquette: 'moquette_r', moquette_b: 'moquette_b' }, MATP = new Map()
     const pavimento = nome => { if (!PAVI) { PAVI = new Map(); try { for (const q of window.InterniArte?.materiali?.() ?? []) if (q.gruppo === 'Pavimenti') PAVI.set(q.nome, q) } catch (e) { console.warn('[pavimenti]', e) } }
       const n0 = (nome ?? 'cemento').split('|')[0], k = PAVI.has(n0) ? n0 : ALIAS[n0] ?? (/moquette/.test(n0) ? 'moquette_r' : 'cemento'), q = PAVI.get(k) ?? PAVI.get('cemento'); if (!q) return null
-      if (!MATP.has(k)) { const t = new THREE.CanvasTexture(q.c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; MATP.set(k, { mat: new THREE.MeshStandardMaterial({ map: t, roughness: 0.82 }), k: q.ppm / q.c.width }) } return MATP.get(k) }
+      if (!MATP.has(k)) { const t = new THREE.CanvasTexture(q.c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; MATP.set(k, { mat: new THREE.MeshStandardMaterial({ map: t, roughness: 0.82 }), k: q.ppm / q.c.width }); LIBERABILI.add(t) } return MATP.get(k) }
     // tutti i mobili diventano poche geometrie, una per materiale: centinaia di stanze con migliaia di pezzi restano leggere
     // due tinte quasi uguali, due trame quasi uguali (le venature del legno di due sedie) diventano una: così si uniscono davvero
     const colQ = c => c ? [c.r, c.g, c.b].map(v => Math.round(v * 24)).join(',') : '', FIRME = new Map(), tela4 = document.createElement('canvas'); tela4.width = tela4.height = 4
@@ -985,14 +1000,23 @@ float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }
       const hsl = {}
       for (const { m, pezzi } of per.values()) {
         if (m.color && !m.map) { m.color.getHSL(hsl); if (hsl.s > 0.35) m.color.setHSL(hsl.h, 0.35 + (hsl.s - 0.35) * 0.3, hsl.l) } // i mobili pastello: il colore pieno resta alle persone e alle opere
-        const conUv = !!m.map, conCol = !!m.vertexColors, P = [], N = [], U = [], C = []
-        for (const [g0, mw] of pezzi) { const g1 = (g0.index ? g0.toNonIndexed() : g0.clone()); g1.applyMatrix4(mw); if (!g1.attributes.normal) g1.computeVertexNormals()
-          const n = g1.attributes.position.count; P.push(...g1.attributes.position.array); N.push(...g1.attributes.normal.array)
-          if (conUv) { const uv = g1.attributes.uv; if (uv) U.push(...uv.array); else for (let i = 0; i < n; i++) U.push(0, 0) }
-          if (conCol) { const c = g1.attributes.color; if (c && c.itemSize === 3) C.push(...c.array); else for (let i = 0; i < n; i++) C.push(1, 1, 1) } g1.dispose() }
-        const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); gg.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); if (conUv) gg.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); if (conCol) gg.setAttribute('color', new THREE.Float32BufferAttribute(C, 3))
+        // unione con gli indici (i vertici condivisi restano condivisi) e direttamente in array tipizzati: molta meno memoria
+        const conUv = !!m.map, conCol = !!m.vertexColors, pz = pezzi.map(([g0, mw]) => { const g1 = g0.clone(); g1.applyMatrix4(mw); if (!g1.attributes.normal) g1.computeVertexNormals(); return g1 })
+        let nv = 0, ni = 0; for (const g1 of pz) { nv += g1.attributes.position.count; ni += g1.index ? g1.index.count : g1.attributes.position.count }
+        const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), U = conUv ? new Float32Array(nv * 2) : null, C = conCol ? new Float32Array(nv * 3).fill(1) : null, I = new Uint32Array(ni)
+        let ov = 0, oi = 0
+        for (const g1 of pz) { const n = g1.attributes.position.count, pa = g1.attributes.position, na = g1.attributes.normal
+          for (let i = 0; i < n; i++) { P[(ov + i) * 3] = pa.getX(i); P[(ov + i) * 3 + 1] = pa.getY(i); P[(ov + i) * 3 + 2] = pa.getZ(i); N[(ov + i) * 3] = na.getX(i); N[(ov + i) * 3 + 1] = na.getY(i); N[(ov + i) * 3 + 2] = na.getZ(i) }
+          if (U && g1.attributes.uv) { const ua = g1.attributes.uv; for (let i = 0; i < n; i++) { U[(ov + i) * 2] = ua.getX(i); U[(ov + i) * 2 + 1] = ua.getY(i) } }
+          if (C && g1.attributes.color?.itemSize >= 3) { const ca = g1.attributes.color; for (let i = 0; i < n; i++) { C[(ov + i) * 3] = ca.getX(i); C[(ov + i) * 3 + 1] = ca.getY(i); C[(ov + i) * 3 + 2] = ca.getZ(i) } }
+          if (g1.index) { const ix = g1.index; for (let i = 0; i < ix.count; i++) I[oi + i] = ix.getX(i) + ov; oi += ix.count } else { for (let i = 0; i < n; i++) I[oi + i] = ov + i; oi += n }
+          ov += n; g1.dispose() }
+        const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(P, 3)); gg.setAttribute('normal', new THREE.BufferAttribute(N, 3)); if (U) gg.setAttribute('uv', new THREE.BufferAttribute(U, 2)); if (C) gg.setAttribute('color', new THREE.BufferAttribute(C, 3)); gg.setIndex(new THREE.BufferAttribute(I, 1))
+        if (m.map) LIBERABILI.add(m.map)
+        gg.computeBoundingSphere(); gg.computeBoundingBox(); for (const a of [...Object.values(gg.attributes), gg.index]) a.onUpload(function () { this.array = null }) // caricati sulla scheda, i numeri non servono più qui
         const mesh = new THREE.Mesh(gg, m); mesh.castShadow = !m.transparent; mesh.receiveShadow = true; scena.add(mesh) } }
-    for (const [id, { l, L }] of LG) {
+    CARTELLO.passo('arredo le stanze…'); await new Promise(r => setTimeout(r, 30))
+    for (const [id, { l, L }] of LG) { if (SENZA.includes('arredi')) break
       if (!L || L.tipo === 'strada' || L.tipo === 'sala' || fatti.has(L)) continue; fatti.add(L)
       const g = new THREE.Group(); g.position.set(L.x, 0, L.z); g.rotation.y = L.ry ?? 0; scena.add(g)
       const posti = { sedie: [], banchi: [], liberi: [], L }; POSTI.set(l.id, posti)
@@ -1016,6 +1040,7 @@ float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }
             const tieni = new Set(palco && poltrone.length > 24 ? poltrone.sort((a, b) => Math.hypot(a.x - palco.x, a.y - palco.y) - Math.hypot(b.x - palco.x, b.y - palco.y)).slice(0, 24) : poltrone)
             for (const o of f.furn) { if (o.id === 'rc_seat' && !tieni.has(o)) continue
               if (!idx.includes(o.room) || o.decor || o.taken || /^st_(?!stufa)/.test(o.id)) continue
+              if (LEGGERA && (o.onTop || (l.tipo === 'casa' && !/bed|letto|table|tavol|chair|sedia|tappeto|rug/i.test(o.id)))) continue // sul telefono: niente minuterie, le case col minimo
               const px = (o.x - cx) * M, pz = (o.y - cy) * M
               if (SEDILE.test(o.id)) { const [wx, wz] = loc(px, pz); posti.sedie.push({ x: wx, z: wz, yaw: (o.ry || 0) + (L.ry ?? 0), by: null }) }
               else if (BANCO.test(o.id) && !o.onTop && !(o.h > 0.3)) { const fx = Math.sin(o.ry || 0), fz = Math.cos(o.ry || 0), d = 0.9 * M, [wx, wz] = loc(px + fx * d, pz + fz * d); posti.banchi.push({ x: wx, z: wz, yaw: (o.ry || 0) + Math.PI + (L.ry ?? 0), by: null }) }
@@ -1102,7 +1127,8 @@ float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }
   const spasso = p => { const ang = [...URB.inRete].filter(n => { const [x, z] = URB.nodoXZ(n); return Math.hypot(x - p.g.position.x, z - p.g.position.z) < 320 }); const n = ang[Math.floor(p.rr() * ang.length)], n0 = URB.nodoVicino(p.g.position.x, p.g.position.z); return n == null ? null : (n0 != null && URB.traNodi ? URB.traNodi(n0, n) : [URB.nodoXZ(n)]) }
   try {
     await Promise.all(['Casual', 'Casual_2', 'Casual_Hoodie', 'Formal', 'Worker'].map(f => Models.loadChar(f)))
-    for (const a of D.abitanti) {
+    CARTELLO.passo('arrivano gli abitanti…')
+    for (const a of D.abitanti) { if (SENZA.includes('figure')) break
       const Dp = Personaggi.descrittore({ fem: !!a.fem }, null, { id: a.id }, a.vesti?.length ? a.vesti : undefined)
       const g = Personaggi.figura(Dp, null); if (!g) continue
       g.scale.setScalar(4.5); g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } }); scena.add(g)
@@ -1207,7 +1233,7 @@ float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }
   // ── la redazione e il calendario: il discorso che la città sta preparando per fuori (una barra che si riempie:
   // prima il concetto, poi la grafica, poi pronto) e quando tocca a ogni forma uscire ─────────────────────────
   {
-    const R = D.redazione ?? {}, P = R.attuale, cal = D.calendario, el = document.createElement('div')
+    const R = D.redazione ?? {}, P = R.attuale, cal = D.calendario, el = document.createElement('div'); el.id = 'redazione'
     el.style.cssText = 'position:fixed;bottom:76px;right:18px;width:290px;background:rgba(12,13,16,.86);border:1px solid rgba(232,226,214,.18);padding:14px 16px;font:12px/1.45 Inter,sans-serif;color:#e8e2d6;z-index:5'
     const barra = (k, col = '#e8e2d6') => `<div style="height:5px;background:rgba(232,226,214,.12);margin:5px 0 9px"><div style="height:5px;width:${Math.round(Math.min(1, k) * 100)}%;background:${col}"></div></div>`
     const FASI = { concetto: 'il concetto', grafica: 'la grafica', pronto: 'pronto, aspetta l\'ora', uscito: 'uscito', lasciato: 'lasciato nel cassetto' }
@@ -1281,7 +1307,7 @@ float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }
 
   // ── l'inchiostro: la scena si disegna su una tela, poi un passaggio a schermo intero traccia i contorni dove la profondità
   // salta (i mobili, le figure, le tavole contro il suolo), scurisce appena gli angoli e aggiunge un filo di grana ───────────
-  const POST = new URLSearchParams(location.search).get('post') === '0' ? null : (() => {
+  const POST = LEGGERA || new URLSearchParams(location.search).get('post') === '0' ? null : (() => {
     try {
       const pr = R.getPixelRatio(), RT = new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { depthBuffer: true, encoding: THREE.sRGBEncoding })
       RT.isXRRenderTarget = true // così ogni materiale fa da sé tono e colore come quando disegna sullo schermo (le figure restano coi loro colori)
@@ -1339,5 +1365,10 @@ float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }
   window.__dbg = id => { const L = URB.lotti.get(id), P = POSTI.get(id); return JSON.stringify({ L: L && { x: L.x, z: L.z, tipo: L.tipo, ry: L.ry, mezza: L.mezza }, posti: P && { s: P.sedie.length, b: P.banchi.length, l: P.liberi.length }, qui: gente.filter(p => p.meta === id).map(p => [p.a.id, p.posa, Math.round(p.g.position.x), Math.round(p.g.position.z), p.g.visible, !!p.via]) }) }
   window.__muovi = muoviGente
   window.__vai = (id, d = 260) => { const L = URB.lotti.get(id); if (L) vola(new THREE.Vector3(L.x, 0, L.z), d, 0.615) }; window.__gente = () => gente.map(p => [p.a.id, p.meta, p.posa, !!p.via, p.posto?.tipo])
-  window.__R = R; window.__scena = scena; window.__citta = true
-})().catch(e => { console.error(e); window.__cittaErrore = String(e) })
+  // tutte le trame vanno sulla scheda grafica subito; poi le tele che non cambieranno più si svuotano (centinaia di MB in meno:
+  // sul telefono e nel browser di Instagram è la differenza tra una pagina che si apre e una che si chiude da sola)
+  try { const tutte = new Set(); scena.traverse(o => { for (const m of [].concat(o.material ?? [])) for (const k of ['map', 'emissiveMap', 'alphaMap']) if (m?.[k]?.isTexture) tutte.add(m[k]) })
+    for (const t of tutte) R.initTexture(t)
+    for (const t of LIBERABILI) { const c = t.image; if (c && c.tagName === 'CANVAS' && tutte.has(t)) { c.width = c.height = 1 } } } catch (e) { console.warn('[memoria]', e) }
+  window.__R = R; window.__scena = scena; window.__citta = true; CARTELLO.via()
+})().catch(e => { console.error(e); window.__cittaErrore = String(e); CARTELLO.errore(e) })
