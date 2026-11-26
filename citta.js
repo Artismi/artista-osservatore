@@ -479,6 +479,22 @@
   })
 
   // ── il tempo ──────────────────────────────────────────────────────────────────────────────────────────
+  // ── la redazione e il calendario: il discorso che la città sta preparando per fuori (una barra che si riempie:
+  // prima il concetto, poi la grafica, poi pronto) e quando tocca a ogni forma uscire ─────────────────────────
+  {
+    const R = D.redazione ?? {}, P = R.attuale, cal = D.calendario, el = document.createElement('div')
+    el.style.cssText = 'position:fixed;bottom:76px;right:18px;width:290px;background:rgba(12,13,16,.86);border:1px solid rgba(232,226,214,.18);padding:14px 16px;font:12px/1.45 Inter,sans-serif;color:#e8e2d6;z-index:5'
+    const barra = (k, col = '#e8e2d6') => `<div style="height:5px;background:rgba(232,226,214,.12);margin:5px 0 9px"><div style="height:5px;width:${Math.round(Math.min(1, k) * 100)}%;background:${col}"></div></div>`
+    const FASI = { concetto: 'il concetto', grafica: 'la grafica', pronto: 'pronto, aspetta l\'ora', uscito: 'uscito', lasciato: 'lasciato nel cassetto' }
+    let h = `<div style="letter-spacing:.14em;text-transform:uppercase;opacity:.6;font-size:10px">la redazione</div>`
+    if (P) h += `<div style="font-size:16px;margin-top:4px">«${esc(P.argomento)}»</div><div style="opacity:.7">${esc(FASI[P.stato] ?? P.stato ?? '')} · racconta ${esc(P.narratore?.nome ?? '')}</div>${barra(P.progresso ?? 0, P.stato === 'pronto' ? '#e3361b' : '#e8e2d6')}<div style="opacity:.75">${(P.tappe ?? []).map(t => `${t.voce ? '●' : '○'} ${esc(t.nome)}`).join('<br>')}</div>`
+    else h += `<div style="opacity:.6;margin-top:4px">nessun discorso in preparazione</div>`
+    if (cal?.ritardo) h += `<div style="letter-spacing:.14em;text-transform:uppercase;opacity:.6;font-size:10px;margin-top:12px">il calendario</div>` + Object.entries(cal.ritardo).map(([f, k]) => `<div style="display:flex;justify-content:space-between;margin-top:5px"><span>${f}</span><span style="opacity:.6">${k >= 1 ? 'tocca a lui' : Math.round(k * 100) + '%'}</span></div>${barra(k, k >= 1 ? '#e3361b' : '#9aa0aa')}`).join('')
+    if (R.storico?.length) h += `<div style="letter-spacing:.14em;text-transform:uppercase;opacity:.6;font-size:10px;margin-top:8px">usciti e lasciati</div>${R.storico.slice(0, 4).map(x => `<div style="opacity:.7">${x.stato === 'lasciato' ? '○' : '●'} ${esc(x.argomento)}</div>`).join('')}`
+    el.innerHTML = h; el.style.cursor = 'pointer'; document.body.appendChild(el)
+    el.onclick = () => { if (!P) return; scheda(`<div class="meta">la redazione · dal giorno ${P.dal ?? P.giorno}</div><h2>«${esc(P.argomento)}»</h2><p>${esc(P.perche ?? '')}. Racconta ${esc(P.narratore?.nome ?? '')}.</p>${(P.tappe ?? []).map(t => `<div class="riga"><b>${esc(t.nome)}</b> ${t.voce ? `${esc(t.voce.nome)}: ${esc(t.voce.testo)}` : '<span style="opacity:.5">manca ancora una voce</span>'}</div>`).join('')}<div class="meta" style="margin-top:14px">come sta andando</div>${(P.diario ?? []).slice().reverse().map(d => `<div class="riga"><span style="opacity:.5">giorno ${d.giorno}</span> ${esc(d.testo)}</div>`).join('')}`) }
+  }
+
   const v3 = new THREE.Vector3(); let prima = performance.now()
   O.t.set(0, 0, 0); O.dist = Math.max(LX, LZ) * 0.95
   function giro2() {
