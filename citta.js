@@ -155,30 +155,7 @@
       fondiVivi.push(mat)
     })
   }
-  var reteMat = null
-  // la rete in 3d: ogni tavola è un punto nello spazio (più in alto quanto più conta), ogni legame un filo nell'aria;
-  // sotto stanno le tavole, sopra le parole. I fili più forti in vermiglio.
-  {
-    const fili = D.fili ?? [], wmax = Math.max(1e-6, ...fili.map(f => f[2])), soglia = [...fili.map(f => f[2])].sort((a, b) => b - a)[Math.floor(fili.length * 0.01)] ?? wmax
-    const qN = D.punti.map(p => { const x = X(p.x), z = Z(p.y); return new THREE.Vector3(x, altezza(x, z) + 6 + 34 * (p.i ?? 0.3) ** 1.5, z) })
-    const pos = new Float32Array(qN.length * 3); qN.forEach((v, i) => pos.set([v.x, v.y, v.z], i * 3))
-    const gp = new THREE.BufferGeometry(); gp.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    scena.add(new THREE.Points(gp, new THREE.PointsMaterial({ color: 0xe8e2d6, size: 2, sizeAttenuation: false, transparent: true, opacity: 0.45, depthWrite: false })))
-    // i fili: per tavola i due più forti; curvi verso l'alto, come archi tesi
-    const migliori = new Map(); for (const f of fili) for (const k of [f[0], f[1]]) { if (!migliori.has(k)) migliori.set(k, []); migliori.get(k).push(f) }
-    const scelti = new Set(); for (const l of migliori.values()) for (const f of l.sort((a, b) => b[2] - a[2]).slice(0, 1)) scelti.add(f)
-    const lin = [], col = [], tinta = new THREE.Color()
-    const lunghe = [...scelti].map(f => qN[f[0]] && qN[f[1]] ? qN[f[0]].distanceTo(qN[f[1]]) : 0).sort((a, b) => a - b), corta = lunghe[Math.floor(lunghe.length * 0.75)] ?? 1e9
-    for (const f of scelti) {
-      const A = qN[f[0]], B = qN[f[1]]; if (!A || !B || (A.distanceTo(B) > corta && f[2] < soglia)) continue
-      const t = f[2] / wmax, M = A.clone().lerp(B, 0.5); M.y += A.distanceTo(B) * 0.18
-      const curva = new THREE.QuadraticBezierCurve3(A, M, B).getPoints(10)
-      if (f[2] >= soglia) tinta.setRGB(0.89, 0.21, 0.11); else tinta.setRGB(0.91, 0.89, 0.84).multiplyScalar(0.05 + 0.3 * t)
-      for (let k = 0; k < curva.length - 1; k++) { lin.push(curva[k].x, curva[k].y, curva[k].z, curva[k + 1].x, curva[k + 1].y, curva[k + 1].z); col.push(tinta.r, tinta.g, tinta.b, tinta.r, tinta.g, tinta.b) }
-    }
-    const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3)); gl.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
-    reteMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }); scena.add(new THREE.LineSegments(gl, reteMat))
-  }
+  var reteMat = null, cartMat = []
 
   const PZ = new THREE.Vector3(X(D.piazza.x), 0, Z(D.piazza.y)); PZ.y = altezza(PZ.x, PZ.z)
   // ── i disegni resi 3d dal motore: una tavola diventa rilievo, la luce dell'immagine diventa altezza ──────────
@@ -280,13 +257,13 @@
       scena.add(cornice); scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m); meshDi.set(p.id, { m, w: W, h: H, aTerra: false, cornice })
     }
     // i cartellini: i titoli delle tavole senza immagine, su poche tele grandi (una per 192 cartellini), uniti in una geometria sola per tela
-    const senza = resto.filter(p => !p.img && !p.mini).sort((a, b) => b.i - a.i).slice(0, 960), CW = 128, CH = 160, PER = 16 * 12
+    const senza = resto.filter(p => !p.img && !p.mini).sort((a, b) => b.i - a.i).slice(0, 480), CW = 128, CH = 160, PER = 16 * 12
     for (let t = 0; t * PER < senza.length; t++) {
       const parte = senza.slice(t * PER, (t + 1) * PER), cv = document.createElement('canvas'); cv.width = 2048; cv.height = 1920; const g = cv.getContext('2d')
       const pos = [], uv = [], ind = []
       parte.forEach((p, i) => {
         const cx = (i % 16) * CW, cy = Math.floor(i / 16) * CH
-        g.fillStyle = '#16171b'; g.fillRect(cx + 2, cy + 2, CW - 4, CH - 4); g.strokeStyle = 'rgba(232,226,214,.5)'; g.strokeRect(cx + 3, cy + 3, CW - 6, CH - 6)
+        g.strokeStyle = 'rgba(232,226,214,.35)'; g.beginPath(); g.moveTo(cx + 9, cy + 6); g.lineTo(cx + 40, cy + 6); g.stroke()
         g.fillStyle = '#e8e2d6'; g.font = '600 15px Inter, sans-serif'; const parole = (p.t || 'senza titolo').split(/\s+/); let riga = '', yy = cy + 24
         for (const w of parole) { if (g.measureText(riga + ' ' + w).width > CW - 18) { g.fillText(riga, cx + 9, yy); riga = w; yy += 18; if (yy > cy + CH - 30) break } else riga = riga ? riga + ' ' + w : w }
         if (yy <= cy + CH - 30) g.fillText(riga, cx + 9, yy)
@@ -298,8 +275,33 @@
       })
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(ind)
       const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = 4
-      scena.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })))
+      const cm = new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false }); cartMat.push(cm); scena.add(new THREE.Mesh(geo, cm))
     }
+  }
+
+  // la rete: ogni tavola sale con un filo dritto al nodo del suo territorio (sopra la sala); i nodi si legano tra loro
+  // con archi alti, tanto più spessi di colore quanto più fili passano tra le due aree. Ordine, non groviglio.
+  {
+    const nodi = new Map()
+    for (const [id, o] of meshDi) { const p = posDi.get(id); if (!p || p.q == null) continue; if (!nodi.has(p.q)) nodi.set(p.q, { s: new THREE.Vector3(), n: 0, top: -1e9, membri: [] }); const N = nodi.get(p.q), v = o.m.position; N.s.add(v); N.n++; N.top = Math.max(N.top, v.y + (o.h ?? 10) / 2); N.membri.push(o) }
+    const lin = [], col = []
+    const seg = (A, B, r, g, b) => { lin.push(A.x, A.y, A.z, B.x, B.y, B.z); col.push(r, g, b, r, g, b) }
+    for (const N of nodi.values()) {
+      N.c = N.s.clone().multiplyScalar(1 / N.n); N.c.y = N.top + 22
+      const ds = N.membri.map(o => o.m.position.distanceTo(N.c)).sort((a, b) => a - b), lim = ds[Math.floor(ds.length * 0.6)] ?? 1e9
+      for (const o of N.membri) { const v = o.m.position; if (v.distanceTo(N.c) > lim) continue; seg(new THREE.Vector3(v.x, v.y + (o.h ?? 10) / 2, v.z), N.c, 0.045, 0.045, 0.042) }
+    }
+    // tra i territori: quanti fili li legano
+    const tra = new Map(); for (const f of D.fili ?? []) { const a = D.punti[f[0]]?.q, b = D.punti[f[1]]?.q; if (a == null || b == null || a === b || !nodi.has(a) || !nodi.has(b)) continue; const k = a < b ? a + '|' + b : b + '|' + a; tra.set(k, (tra.get(k) ?? 0) + f[2]) }
+    const arr = [...tra.entries()].sort((x, y) => y[1] - x[1]), top = arr[0]?.[1] ?? 1
+    const tenuti = new Map(); for (const [k] of arr) { const [a, b] = k.split('|'); const na = tenuti.get(a) ?? 0, nb = tenuti.get(b) ?? 0; if (na >= 3 && nb >= 3) continue; tenuti.set(a, na + 1); tenuti.set(b, nb + 1); const w = tra.get(k) / top, A = nodi.get(+a) ?? nodi.get(a), B = nodi.get(+b) ?? nodi.get(b); if (!A || !B) continue
+      const M = A.c.clone().lerp(B.c, 0.5); M.y += A.c.distanceTo(B.c) * 0.15; const cv = new THREE.QuadraticBezierCurve3(A.c, M, B.c).getPoints(24)
+      const [r, g, bb] = w > 0.6 ? [0.89, 0.21, 0.11] : [0.2 + 0.5 * w, 0.2 + 0.48 * w, 0.19 + 0.45 * w]
+      for (let i = 0; i < cv.length - 1; i++) seg(cv[i], cv[i + 1], r, g, bb) }
+    const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3)); gl.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+    reteMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }); scena.add(new THREE.LineSegments(gl, reteMat))
+    const pn = new Float32Array(nodi.size * 3); [...nodi.values()].forEach((N, i) => pn.set([N.c.x, N.c.y, N.c.z], i * 3))
+    const gp = new THREE.BufferGeometry(); gp.setAttribute('position', new THREE.BufferAttribute(pn, 3)); scena.add(new THREE.Points(gp, new THREE.PointsMaterial({ color: 0xe8e2d6, size: 5, sizeAttenuation: false, transparent: true, opacity: 0.8, depthWrite: false })))
   }
 
   // ── gli interventi dei cittadini: lavorano sui piani delle tavole, che sono muri invisibili. Rilievi, parole,
@@ -509,7 +511,7 @@
       else { const passo = Math.min(dist, p.vel * dt); p.g.position.addScaledVector(d.normalize(), passo); p.g.position.y = altezza(p.g.position.x, p.g.position.z); p.g.rotation.y = Math.atan2(d.x, d.z); speed = 1.2 }
       try { Models.animPerson(p.g, { speed, anim }, dt) } catch (_) { /* resta ferma */ }
     }
-    if (reteMat) reteMat.opacity = 0.2 + 0.45 * Math.max(0, Math.min(1, 1 - (O.dist - 250) / 900)) // da lontano la rete si dirada, da vicino si legge
+    { const vic = Math.max(0, Math.min(1, 1 - (O.dist - 150) / 350)); for (const m of cartMat) m.opacity = 0.9 * vic } // i cartellini si leggono solo da vicino
     const tt = ora / 1000; for (const m of fondiVivi) m.uniforms.u_time.value = tt; for (const m of ologrammi) m.uniforms.t.value = tt
     { const ry = Math.round((O.yaw - Math.PI / 4) / (Math.PI / 2)) * (Math.PI / 2); for (const m of scritte) m.rotation.y = ry }
     R.render(scena, cam)
