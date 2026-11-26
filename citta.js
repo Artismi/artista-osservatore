@@ -239,7 +239,7 @@
         // il riflesso sul pavimento lucido: la tavola capovolta sotto terra, sfocata e che svanisce
         const rif = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), materialeRiflesso(p.id, y - cy, H)); rif.position.set(x, cy - (y - cy), z); rif.rotation.copy(m.rotation); rif.scale.y = -1; rif.renderOrder = -1; scena.add(rif)
         if (rovina) m.rotation.z += (caso() - 0.5) * 0.12
-        scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m); meshDi.set(p.id, { m, w: W, h: H, aTerra: false })
+        scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m); meshDi.set(p.id, { m, w: W, h: H, aTerra: false, cornice })
       })
       piano[0] = Math.max(piano[0], ...messe.map(m => Math.abs(m.u) * 2 + m.W)); piano[1] = Math.max(piano[1], ...messe.map(m => m.v + m.H / 2 + 30))
     })
@@ -276,6 +276,34 @@
       else { m.position.copy(base.m.position); m.rotation.copy(base.m.rotation); m.position.y += base.h + 3 }
       scena.add(m); ologrammi.push(mat)
     }
+  }
+
+  // ── i piani: livelli trasparenti che gli abitanti mettono nello spazio (velari, soglie, fondali, tavole sospese)
+  // e il colore che danno alle cornici. Ogni piano ha il suo autore e la sua ragione, nella scheda della sala. ──────
+  const motivo = codice => {
+    let corpo = codice.replace(/#version[^\n]*\n/g, '').replace(/\bgl_FragCoord\b/g, 'vec4(vU*u_resolution,0.,1.)').replace(/void\s+main\s*\(\s*\)/, 'void fondo_main()')
+    const frag = `uniform float u_time; uniform vec2 u_resolution; uniform float u_seed; uniform float opacita; varying vec2 vU;\n${corpo}\nvoid main(){ fondo_main(); gl_FragColor.a = opacita; }`
+    const cv = document.createElement('canvas').getContext('webgl'); if (cv) { const sh = cv.createShader(cv.FRAGMENT_SHADER); cv.shaderSource(sh, 'precision highp float;\n' + frag); cv.compileShader(sh); if (!cv.getShaderParameter(sh, cv.COMPILE_STATUS)) return null }
+    const mat = new THREE.ShaderMaterial({ uniforms: { u_time: { value: 0 }, u_resolution: { value: new THREE.Vector2(512, 512) }, u_seed: { value: 3.1 }, opacita: { value: 0.4 } }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }', fragmentShader: frag })
+    fondiVivi.push(mat); return mat
+  }
+  for (const c of costr.filter(c => c.tipo === 'piano' && c.stato !== 'tolto')) {
+    const R = sale.find(s => s.c.id === c.a), d = c.dati ?? {}; if (!R) continue
+    if (d.contenuto === 'cornici') { for (const id of d.tavole ?? []) { const t = meshDi.get(id); if (t?.cornice) t.cornice.material = new THREE.MeshBasicMaterial({ color: new THREE.Color(d.colore ?? '#e3361b') }) } continue }
+    const lz = d.avanti === 1 ? R.piano[1] * 0.5 + 6 : d.avanti === -1 ? -R.piano[1] * 0.5 - 6 : 0, [x, z] = R.aMondo(0, lz), y = R.centro.y + (d.quota ?? 30)
+    const L = d.largo ?? 60, H = d.alto ?? 40, g = new THREE.PlaneGeometry(L, H)
+    let mat
+    if (d.contenuto === 'motivo') { mat = R.q?.sala?.suolo?.codice ? motivo(R.q.sala.suolo.codice) : null; if (mat) mat.uniforms.opacita.value = d.opacita ?? 0.4 }
+    else if (d.contenuto === 'tavola') { const p = posDi.get(d.tavola); if (p?.img) { mat = tavolaMat(p.id); mat.transparent = true; mat.opacity = d.opacita ?? 0.6; mat.depthWrite = false } }
+    if (!mat) mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(d.colore ?? '#ebe6dc'), transparent: true, opacity: d.opacita ?? 0.15, side: THREE.DoubleSide, depthWrite: false })
+    const m = new THREE.Mesh(g, mat), ordine = new THREE.Group(); ordine.position.set(x, y, z)
+    if (d.verso === 'orizzontale') { m.rotation.x = -Math.PI / 2; ordine.rotation.y = R.verso } else ordine.rotation.y = R.verso
+    ordine.add(m)
+    const orlo = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: 0xe8e2d6, transparent: true, opacity: 0.25 })); orlo.rotation.copy(m.rotation); ordine.add(orlo)
+    if (d.contenuto === 'parola' && d.parola) { const sc = scritta(d.parola, 7, '#f1ece2', 600); sc.position.z = 0.3; ordine.add(sc) }
+    m.renderOrder = 3; scena.add(ordine)
+    if (d.contenuto === 'tavola') { m.userData = { tipo: 'tavola', p: posDi.get(d.tavola), nota: `Sospesa su un piano da ${nomeDi(c.chi)}.` }; cliccabili.push(m) }
   }
 
   // ── le parole: i concetti, in aria. Grandi quanto contano, più in alto quanto più legano aree diverse; uno spillo le
