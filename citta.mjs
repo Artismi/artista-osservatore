@@ -30,6 +30,8 @@ function portoVecchio(MEM) {
   mkdirSync(join(MEM, 'pv'), { recursive: true }); mkdirSync(join(MEM, 'assets/mc'), { recursive: true })
   for (const f of readdirSync(join(da, 'src'))) copyFileSync(join(da, 'src', f), join(MEM, 'pv', f))
   for (const f of readdirSync(join(da, 'assets/mc'))) if (!existsSync(join(MEM, 'assets/mc', f))) copyFileSync(join(da, 'assets/mc', f), join(MEM, 'assets/mc', f))
+  // i mobili del kit che gli interni di Porto Vecchio non rifanno a mano (models.js li cerca in assets/mf)
+  if (existsSync(join(da, 'assets/mf'))) { mkdirSync(join(MEM, 'assets/mf'), { recursive: true }); for (const f of readdirSync(join(da, 'assets/mf'))) if (!existsSync(join(MEM, 'assets/mf', f))) copyFileSync(join(da, 'assets/mf', f), join(MEM, 'assets/mf', f)) }
   return true
 }
 
