@@ -636,12 +636,48 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     el.onclick = () => { if (!P) return; scheda(`<div class="meta">la redazione · dal giorno ${P.dal ?? P.giorno}</div><h2>«${esc(P.argomento)}»</h2><p>${esc(P.perche ?? '')}. Racconta ${esc(P.narratore?.nome ?? '')}.</p>${(P.tappe ?? []).map(t => `<div class="riga"><b>${esc(t.nome)}</b> ${t.voce ? `${esc(t.voce.nome)}: ${esc(t.voce.testo)}` : '<span style="opacity:.5">manca ancora una voce</span>'}</div>`).join('')}<div class="meta" style="margin-top:14px">come sta andando</div>${(P.diario ?? []).slice().reverse().map(d => `<div class="riga"><span style="opacity:.5">giorno ${d.giorno}</span> ${esc(d.testo)}</div>`).join('')}`) }
   }
 
+  // ── chi c'è rende il mondo: attorno a ogni abitante (quanto più è all'opera, tanto più largo) le cose si vedono piene;
+  // fuori, la città resta un ologramma, una nuvola di punti della stessa luce. Tutti i materiali passano di qui.
+  const MAXO = 32, OCCHI = { value: Array.from({ length: MAXO }, () => new THREE.Vector4(0, 0, 0, 0)) }, NOCCHI = { value: 0 }
+  const OLO_TESTA = `varying vec3 vMondoG; uniform vec4 uOcchi[${MAXO}]; uniform int uNOcchi;`
+  const OLO_FINE = `{
+      float vic = 0.;
+      for (int i = 0; i < ${MAXO}; i++) { if (i >= uNOcchi) break; vec4 o = uOcchi[i]; float d = length(vMondoG.xz - o.xy); vic = max(vic, 1. - smoothstep(o.z * .55, o.z, d)); }
+      if (uNOcchi > 0) {
+        vec2 c = fract(gl_FragCoord.xy / 3.5) - .5; float punto = 1. - smoothstep(.12, .26, length(c));
+        float lum = dot(gl_FragColor.rgb, vec3(.3, .59, .11));
+        vec3 olo = mix(vec3(.30, .55, .70), vec3(.95, .80, .85), lum) * (.55 + lum * 1.8) * punto;
+        gl_FragColor.rgb = mix(olo, gl_FragColor.rgb, vic); gl_FragColor.a = mix(max(gl_FragColor.a, .0) * (.55 + .45 * punto), gl_FragColor.a, vic);
+      }
+    }`
+  const ologrammizza = m => {
+    if (!m || m.userData.__olo || m.isRawShaderMaterial || m.isLineBasicMaterial || m.isPointsMaterial) return
+    if (m.isShaderMaterial) { // i nostri shader (fondi, motivi): stessa regola, cucita a mano
+      if (!/void main\s*\(\s*\)\s*\{/.test(m.fragmentShader) || !/void main\s*\(\s*\)\s*\{/.test(m.vertexShader)) return
+      m.userData.__olo = true; m.uniforms.uOcchi = OCCHI; m.uniforms.uNOcchi = NOCCHI
+      m.vertexShader = OLO_TESTA + '\n' + m.vertexShader.replace(/void main\s*\(\s*\)\s*\{/, 'void main(){ vMondoG = (modelMatrix * vec4(position, 1.)).xyz;')
+      const f = m.fragmentShader, i = f.lastIndexOf('}'); m.fragmentShader = f.replace(/(precision [a-z]+ float;\n)?/, x => x + OLO_TESTA + '\n').slice(0, i + OLO_TESTA.length + 1) + OLO_FINE + '\n}'
+      m.needsUpdate = true; return }
+    m.userData.__olo = true; const prima = m.onBeforeCompile
+    m.onBeforeCompile = (sh, ren) => {
+      if (prima) prima.call(m, sh, ren)
+      sh.uniforms.uOcchi = OCCHI; sh.uniforms.uNOcchi = NOCCHI
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + OLO_TESTA).replace('#include <project_vertex>', '#include <project_vertex>\nvMondoG = (modelMatrix * vec4(transformed, 1.)).xyz;')
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + OLO_TESTA).replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' + OLO_FINE)
+    }
+    const k = m.customProgramCacheKey?.bind(m); m.customProgramCacheKey = () => (k ? k() : '') + '|olo'; m.needsUpdate = true
+  }
+  const figure = new Set(gente.map(p => p.g))
+  scena.traverse(o => { let f = o; while (f) { if (figure.has(f)) return; f = f.parent } if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(ologrammizza) })
+  const aggiornaOcchi = () => { let n = 0; for (const p of gente) { if (n >= MAXO || !p.g.visible) continue; const o = p.ore[Math.floor(oraCitta()) % 24], all = o && !/cammina|passeggia/.test(o.fa) ? 1 : 0.7; OCCHI.value[n++].set(p.g.position.x, p.g.position.z, (55 + 35 * all) * (O.dist > 1200 ? 1.5 : 1), 0) } NOCCHI.value = n }
+
   const v3 = new THREE.Vector3(); let prima = performance.now()
   O.t.set(0, 0, 0); O.dist = Math.max(LX, LZ) * 0.95
   function giro2() {
     const ora = performance.now(), dt = Math.min(0.05, (ora - prima) / 1000); prima = ora
     if (volo) { const k = Math.min(1, (ora - volo.t0) / 1500), e = k * k * (3 - 2 * k); O.t.lerpVectors(volo.da.t, volo.a.t, e); O.dist = volo.da.dist + (volo.a.dist - volo.da.dist) * e; O.pitch = volo.da.pitch + (volo.a.pitch - volo.da.pitch) * e; O.yaw = volo.da.yaw + (volo.a.yaw - volo.da.yaw) * e; if (k >= 1) volo = null }
     metti()
+    aggiornaOcchi()
     { const h = oraCitta(); luce(h); OR.el.textContent = `ore ${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')} · giornata ${D.giorno ?? ''}`
       for (const p of gente) {
         const meta = p.posOra(h), d = meta.clone().sub(p.g.position).setY(0), dist = d.length(), o = p.ore[Math.floor(h) % 24]
