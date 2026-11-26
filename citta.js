@@ -408,12 +408,18 @@
   // ── gli abitanti: le figure di Porto Vecchio, vestite coi capi del guardaroba, che camminano per le strade ────
   const gente = []
   const viaPer = (a, b) => { const s = strade.find(s => (s.c.a === a && s.c.b === b) || (s.c.a === b && s.c.b === a)); if (!s) return null; const pts = curvaStrada(s).map(([x, y]) => { const wx = X(x), wz = Z(y); return new THREE.Vector3(wx, altezza(wx, wz), wz) }); return s.c.a === a ? pts : pts.reverse() }
+  // i luoghi del ciclo della giornata (le celle): la piazza al centro, gli altri attorno; ognuno ha il suo nome nel mondo
+  const LUOGHI = { piazza: PZ.clone(), assemblea: PZ.clone().add(new THREE.Vector3(18, 0, 14)), biblioteca: PZ.clone().add(new THREE.Vector3(-70, 0, 34)), bottega: PZ.clone().add(new THREE.Vector3(64, 0, 44)), osservatorio: PZ.clone().add(new THREE.Vector3(10, 0, -84)), archivio: PZ.clone().add(new THREE.Vector3(-52, 0, -56)), guardaroba: GUARD.clone() }
+  for (const [k, v] of Object.entries(LUOGHI)) { v.y = altezza(v.x, v.z); if (k !== 'piazza' && k !== 'guardaroba') etichetta(`<div class="s" style="letter-spacing:.12em;text-transform:uppercase;opacity:.75">${k}</div>`, v.clone().add(new THREE.Vector3(0, 14, 0)), 900, 'luogo') }
+  // la giornata di ognuno, dal verbale di oggi: dove è passato e in che ordine (casa → … → casa)
+  const verbaleOggi = D.giornate?.[0]?.verbale ?? []
+  const percorsoDi = (a, casa) => { const f = []; for (const v of verbaleOggi) if (v.chi === a.id && LUOGHI[v.fase] && f[f.length - 1] !== v.fase) f.push(v.fase); if (!f.length) f.push('piazza'); return [casa, ...f.map(x => LUOGHI[x].clone().add(new THREE.Vector3((caso() - 0.5) * 16, 0, (caso() - 0.5) * 16))), casa] }
   try {
     await Promise.all(['Casual', 'Casual_2', 'Casual_Hoodie', 'Formal', 'Worker'].map(f => Models.loadChar(f)))
     for (const a of D.abitanti) {
       const Dp = Personaggi.descrittore({ fem: !!a.fem }, null, { id: a.id }, a.vesti?.length ? a.vesti : undefined)
       const g = Personaggi.figura(Dp, null); if (!g) continue
-      g.scale.setScalar(3.4); g.traverse(o => { if (o.isMesh) o.castShadow = true }); scena.add(g)
+      g.scale.setScalar(7); g.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material && 'emissive' in o.material) { o.material = o.material.clone(); o.material.emissive = o.material.color.clone().multiplyScalar(0.35) } } }); scena.add(g)
       // il percorso: dalla sua sala (se ne cura una) alla piazza per le strade, una sosta tra le tavole, ogni tanto il guardaroba
       const mia = sale.find(s => s.sala?.curatore === a.id) ?? sale.find(s => s.c.chi === a.id)
       let giro = []
@@ -421,10 +427,11 @@
         const via = viaPer(mia.c.id, 'piazza') ?? strade.map(s => s.c.a === mia.c.id ? viaPer(mia.c.id, s.c.b) : s.c.b === mia.c.id ? viaPer(mia.c.id, s.c.a) : null).find(Boolean)
         giro = [mia.centro.clone(), ...(via ?? [PZ.clone()]), ...(via ? via.slice().reverse() : [])]
       } else { for (let k = 0; k < 5; k++) { const an = caso() * Math.PI * 2, rr = 15 + caso() * (a.tipo === 'scienziato' ? 140 : 60); const x = PZ.x + Math.cos(an) * rr, z = PZ.z + Math.sin(an) * rr; giro.push(new THREE.Vector3(x, altezza(x, z), z)) } }
+      { const casa = mia ? mia.centro.clone() : new THREE.Vector3(X(a.casa?.x ?? D.piazza.x), 0, Z(a.casa?.y ?? D.piazza.y)); casa.y = altezza(casa.x, casa.z); giro = percorsoDi(a, casa) } // la sua giornata, così come è andata
       if (caso() < 0.3) giro.splice(1, 0, GUARD.clone().add(new THREE.Vector3(0, 0, 8)))
       g.position.copy(giro[0])
-      const presa = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 2, 8), new THREE.MeshBasicMaterial({ visible: false })); presa.position.y = 0.9; g.add(presa); presa.userData = { tipo: 'abitante', a }; cliccabili.push(presa)
-      gente.push({ g, a, giro, i: 1, sosta: caso() * 3, vel: 8 + caso() * 3 })
+      const presa = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 2.6, 8), new THREE.MeshBasicMaterial({ visible: false })); presa.position.y = 0.9; g.add(presa); presa.userData = { tipo: 'abitante', a }; cliccabili.push(presa)
+      gente.push({ g, a, giro, i: 1, sosta: caso() * 3, vel: 14 + caso() * 5 })
     }
   } catch (e) { console.warn('figure di Porto Vecchio non caricate:', e) }
 
