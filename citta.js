@@ -682,7 +682,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   const OR = { el: document.createElement('div'), giorno: 240 }
   OR.el.style.cssText = 'position:fixed;top:18px;right:18px;font:12px/1.4 JetBrains Mono,monospace;color:#e8e2d6;opacity:.75;z-index:5;letter-spacing:.08em'; document.body.appendChild(OR.el)
   const oraFissa = +new URLSearchParams(location.search).get('ora') || null
-  const oraCitta = () => oraFissa ?? ((performance.now() / 1000) % OR.giorno) / OR.giorno * 24
+  const oraCitta = () => oraFissa ?? (10 + (performance.now() / 1000) / OR.giorno * 24) % 24 // si arriva sempre di mattina, alle dieci
   try {
     await Promise.all(['Casual', 'Casual_2', 'Casual_Hoodie', 'Formal', 'Worker'].map(f => Models.loadChar(f)))
     for (const a of D.abitanti) {
