@@ -109,7 +109,7 @@
     // la carta: il suolo infinito, chiaro, che sfuma attorno allo sguardo
     const AMPIO = LATO + 2400, geo = new THREE.PlaneGeometry(AMPIO, AMPIO, 360, 360); geo.rotateX(-Math.PI / 2)
     const pos = geo.attributes.position; for (let i = 0; i < pos.count; i++) pos.setY(i, altezza(pos.getX(i), pos.getZ(i))); geo.computeVertexNormals()
-    const mat = new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.95 })
+    const mat = new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.35, metalness: 0.2, transparent: true, opacity: 0.8, depthWrite: false })
     var occhio = { value: new THREE.Vector3() }
     mat.onBeforeCompile = sh => {
       sh.uniforms.occhio = occhio
@@ -130,7 +130,7 @@
       let corpo = F.codice.replace(/#version[^\n]*\n/g, '').replace(/\bgl_FragCoord\b/g, 'vec4(vU*u_resolution,0.,1.)').replace(/void\s+main\s*\(\s*\)/, 'void fondo_main()')
       if (/mainImage\s*\(/.test(corpo)) corpo = corpo.replace(/void\s+fondo_main\s*\(\s*\)/, 'void fondo_main_x()') + '\nvoid fondo_main(){ vec4 c=vec4(0.); mainImage(c, vU*u_resolution); gl_FragColor=vec4(c.rgb,1.); }'
       const testa = `precision highp float;\nuniform float u_time; uniform vec2 u_resolution; uniform float u_seed; uniform sampler2D maschera; varying vec2 vU; varying vec2 vM;\n${/mainImage/.test(corpo) ? '#define iTime u_time\n#define iResolution vec3(u_resolution,1.)\n' : ''}`
-      const frag = testa + corpo + '\nvoid main(){ fondo_main(); gl_FragColor.rgb *= .32; gl_FragColor.a = texture2D(maschera, vM).r * .9; }'
+      const frag = testa + corpo + '\nvoid main(){ fondo_main(); gl_FragColor.rgb *= .16; gl_FragColor.a = texture2D(maschera, vM).r * .9; }'
       if (!prova(frag)) return
       // la toppa copre solo dove la maschera dell'area c'è
       let i0 = GN, i1 = 0, j0 = GN, j1 = 0; const M = maschere[k]; for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) if (M[j * GN + i] > 8) { i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j) }
@@ -144,29 +144,27 @@
       fondiVivi.push(mat)
     })
   }
-  // l'inchiostro: ogni tavola è una chiazza (grande quanto conta), con i suoi schizzi; da ogni chiazza partono i fili
-  // verso tutte le sue relazioni, sottili i deboli, pieni i forti; i più forti in vermiglio
+  // la rete in 3d: ogni tavola è un punto nello spazio (più in alto quanto più conta), ogni legame un filo nell'aria;
+  // sotto stanno le tavole, sopra le parole. I fili più forti in vermiglio.
   {
-    const PX = 3072, cv = document.createElement('canvas'); cv.width = cv.height = PX; const g = cv.getContext('2d')
-    const ux = x => (X(x) - GX0) / GLX * PX, uz = y => (Z(y) - GZ0) / GLZ * PX, k1 = PX / GLX
     const fili = D.fili ?? [], wmax = Math.max(1e-6, ...fili.map(f => f[2])), soglia = [...fili.map(f => f[2])].sort((a, b) => b - a)[Math.floor(fili.length * 0.01)] ?? wmax
-    g.lineCap = 'round'
-    for (const [a, b, w] of fili) {
-      const A = D.punti[a], B = D.punti[b]; if (!A || !B) continue
-      const x0 = ux(A.x), y0 = uz(A.y), x1 = ux(B.x), y1 = uz(B.y), mx = (x0 + x1) / 2 + (y0 - y1) * 0.08, my = (y0 + y1) / 2 + (x1 - x0) * 0.08, t = w / wmax
-      g.strokeStyle = w >= soglia ? `rgba(227,54,27,${0.45 + 0.35 * t})` : `rgba(225,218,205,${0.02 + 0.2 * t * t})`; g.lineWidth = (0.12 + 1.1 * t ** 1.5) * k1
-      g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(mx, my, x1, y1); g.stroke()
+    const qN = D.punti.map(p => { const x = X(p.x), z = Z(p.y); return new THREE.Vector3(x, altezza(x, z) + 6 + 34 * (p.i ?? 0.3) ** 1.5, z) })
+    const pos = new Float32Array(qN.length * 3); qN.forEach((v, i) => pos.set([v.x, v.y, v.z], i * 3))
+    const gp = new THREE.BufferGeometry(); gp.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    scena.add(new THREE.Points(gp, new THREE.PointsMaterial({ color: 0xe8e2d6, size: 2, sizeAttenuation: false, transparent: true, opacity: 0.45, depthWrite: false })))
+    // i fili: per tavola i due più forti; curvi verso l'alto, come archi tesi
+    const migliori = new Map(); for (const f of fili) for (const k of [f[0], f[1]]) { if (!migliori.has(k)) migliori.set(k, []); migliori.get(k).push(f) }
+    const scelti = new Set(); for (const l of migliori.values()) for (const f of l.sort((a, b) => b[2] - a[2]).slice(0, 2)) scelti.add(f)
+    const lin = [], col = [], tinta = new THREE.Color()
+    for (const f of scelti) {
+      const A = qN[f[0]], B = qN[f[1]]; if (!A || !B) continue
+      const t = f[2] / wmax, M = A.clone().lerp(B, 0.5); M.y += A.distanceTo(B) * 0.18
+      const curva = new THREE.QuadraticBezierCurve3(A, M, B).getPoints(10)
+      if (f[2] >= soglia) tinta.setRGB(0.89, 0.21, 0.11); else tinta.setRGB(0.91, 0.89, 0.84).multiplyScalar(0.05 + 0.3 * t)
+      for (let k = 0; k < curva.length - 1; k++) { lin.push(curva[k].x, curva[k].y, curva[k].z, curva[k + 1].x, curva[k + 1].y, curva[k + 1].z); col.push(tinta.r, tinta.g, tinta.b, tinta.r, tinta.g, tinta.b) }
     }
-    let zz = 31; const cs = () => { zz = (zz * 1664525 + 1013904223) >>> 0; return zz / 4294967296 }
-    g.fillStyle = 'rgba(225,218,205,.55)'
-    for (const p of D.punti) {
-      const x = ux(p.x), y = uz(p.y), r = (0.2 + 0.75 * Math.sqrt(p.i ?? 0.3)) * k1
-      g.beginPath(); for (let s = 0; s <= 18; s++) { const a = s / 18 * Math.PI * 2, rr = r * (0.82 + 0.3 * cs()); s ? g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) : g.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) } g.fill()
-      const n = Math.floor((p.i ?? 0.3) * 3); for (let s = 0; s < n; s++) { const a = cs() * Math.PI * 2, d = r * (1.3 + cs() * 2.2), rr = r * (0.07 + cs() * 0.2); g.beginPath(); g.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d, rr * 1.6, rr, a, 0, 7); g.fill() }
-    }
-    const tx = new THREE.CanvasTexture(cv); tx.anisotropy = 8; tx.encoding = THREE.sRGBEncoding
-    const m = new THREE.Mesh(toppa(GX0, GZ0, GLX, GLZ, 0.5, 200), new THREE.MeshBasicMaterial({ map: tx, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -4 }))
-    m.renderOrder = 2; scena.add(m)
+    const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3)); gl.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+    scena.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })))
   }
 
   const PZ = new THREE.Vector3(X(D.piazza.x), 0, Z(D.piazza.y)); PZ.y = altezza(PZ.x, PZ.z)
@@ -188,6 +186,10 @@
   const etichetta = (html, p, lontano, cls = '') => { const el = document.createElement('div'); el.className = 'et ' + cls; el.innerHTML = html; strato.appendChild(el); const e = { el, p, lontano }; etichette.push(e); return e }
   const texDi = new Map(), texture = id => { if (!texDi.has(id)) texDi.set(id, new Promise(ok => carica.load(`img/${id}.jpg`, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; ok(t) }, undefined, () => ok(null)))); return texDi.get(id) }
   const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
+  const materialeRiflesso = (id, alto, H) => { const mat = new THREE.ShaderMaterial({ uniforms: { mappa: { value: null } }, transparent: true, depthWrite: false,
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+    fragmentShader: `uniform sampler2D mappa; varying vec2 vUv; void main(){ vec3 c = vec3(0.); for (int i=-2;i<=2;i++) for (int j=-2;j<=2;j++) c += texture2D(mappa, vUv + vec2(float(i),float(j))*.012).rgb; c /= 25.; float f = smoothstep(0., 1., vUv.y) * ${(0.42 * Math.max(0.2, 1 - alto / 120)).toFixed(3)}; gl_FragColor = vec4(c, f); }` })
+    texture(id).then(t => { mat.uniforms.mappa.value = t }); return mat }
   const perQ = new Map(); for (const p of D.punti.filter(p => p.img)) { if (!perQ.has(p.q)) perQ.set(p.q, []); perQ.get(p.q).push(p) }
   const quart = new Map(D.quartieri.map(q => [q.id, q]))
   const idxDi = new Map(D.punti.map((p, i) => [p.id, i])), filiDi = new Map(); for (const [a, b, w] of D.fili ?? []) { for (const [x, y] of [[a, b], [b, a]]) { if (!filiDi.has(x)) filiDi.set(x, new Map()); filiDi.get(x).set(y, w) } }
@@ -211,46 +213,38 @@
     while (resto.length) { const ult = ord[ord.length - 1]; resto.sort((a, b) => legame(ult, b) - legame(ult, a) || b.i - a.i); ord.push(resto.shift()) }
     const n = ord.length, h = 22, w = 17.6, gap = 4, st = w + gap, forma = FORMA[sala.disposizione] ?? 'abside'
     const cs = Math.cos(ax), sn = Math.sin(ax), aMondo = (lx, lz) => [cx + lx * cs + lz * sn, cz - lx * sn + lz * cs], verso = (dx, dz) => Math.atan2(dx * cs + dz * sn, -dx * sn + dz * cs)
-    // i posti: [lx, lz, verso locale (dx,dz), in piano?, quota]
-    const posti = []
-    if (forma === 'abside' || forma === 'recinto') {
-      const nf = forma === 'recinto' ? Math.max(0, Math.floor((n - 1) / 4)) : 0, nl = Math.floor((n - 1 - nf * 2) / 3), nb = n - 2 * nl - nf * 2
-      const L = Math.max(nb, 2) * st + 12, P = Math.max(nl, 1) * st + 16
-      for (let i = 0; i < nb; i++) { const k = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2); posti.push([k * st, -P / 2, [0, 1], false, 0]) } // l'abside: la più amata al centro, le altre ai lati
-      for (let i = 0; i < nl; i++) { const lz = -P / 2 + st * (i + 0.8); posti.push([-L / 2, lz, [1, 0], false, 0]); posti.push([L / 2, lz, [-1, 0], false, 0]) }
-      for (let i = 0; i < nf; i++) { const lx = (L / 2 - st * (i + 0.7)); posti.push([-lx, P / 2, [0, -1], false, 0]); posti.push([lx, P / 2, [0, -1], false, 0]) } // il recinto si chiude, lasciando il varco al centro
-      var piano = [L + 8, P + 8]
-    } else if (forma === 'corridoio') {
-      const lato = Math.ceil((n - 1) / 2), P = Math.max(lato, 1) * st + 14
-      posti.push([0, -P / 2, [0, 1], false, 0]) // in fondo al corridoio, la più amata
-      for (let i = 0; i < n - 1; i++) { const lz = -P / 2 + st * (Math.floor(i / 2) + 0.9); posti.push([i % 2 ? 14 : -14, lz, [i % 2 ? -1 : 1, 0], false, 0]) }
-      var piano = [40, P + 8]
-    } else if (forma === 'pianta') {
-      const col = Math.ceil(Math.sqrt(n)), righe = Math.ceil(n / col), celle = []
-      for (let j = 0; j < righe; j++) for (let i = 0; i < col; i++) celle.push([(i - (col - 1) / 2) * st, (j - (righe - 1) / 2) * (h + gap)])
-      celle.sort((a, b) => Math.hypot(...a) - Math.hypot(...b)) // dal centro verso fuori: la più amata in mezzo
-      for (let i = 0; i < n; i++) posti.push([celle[i][0], -celle[i][1] * 0.4, [0, 1], false, (righe - 1) * (h + gap) / 2 - celle[i][1]])
-      var piano = [col * st + 14, righe * (h + gap) + 14]
-    } else { // strati: piani sospesi, la più amata in cima
-      for (let i = 0; i < n; i++) { const liv = Math.floor(i / 3), k = i % 3; posti.push([(k - 1) * st, -liv * 12, [0, 1], false, (Math.ceil(n / 3) - 1 - liv) * (h * 0.55)]) }
-      var piano = [3 * st + 14, h + 18]
-    }
-    // il pavimento della sala: una lastra smussata, perché il fondo ci scorra sopra senza spigoli
-    const base = new THREE.Mesh(smussato(piano[0], piano[1], 0.8, 10), new THREE.MeshStandardMaterial({ color: rovina ? 0xb9b3a8 : 0xf3efe7, roughness: 0.9, transparent: true, opacity: 0.72 }))
-    base.geometry.dispose() // niente pavimento bianco: le tavole galleggiano nel buio
-    ord.forEach((p, i) => {
-      const [lx, lz, [dx, dz], aTerra, su] = posti[i], [x, z] = aMondo(lx, lz), m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), tavolaMat(p.id))
-      if (aTerra) { m.rotation.set(-Math.PI / 2, 0, ax); m.position.set(x, cy + 2 + su, z); if (su) m.castShadow = true }
-      else {
-        m.rotation.y = verso(dx, dz); m.position.set(x, cy + 9 + h / 2 + su, z); m.castShadow = true
-        const retro = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.8, h + 0.8), new THREE.MeshBasicMaterial({ color: 0x1b1c20, side: THREE.DoubleSide })); retro.position.copy(m.position); retro.rotation.copy(m.rotation); retro.translateZ(-0.25); scena.add(retro)
-        const bordo = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(w + 1.6, h + 1.6)), new THREE.LineBasicMaterial({ color: 0xe8e2d6, transparent: true, opacity: 0.35 })); bordo.position.copy(m.position); bordo.rotation.copy(m.rotation); bordo.translateZ(-0.1); scena.add(bordo)
-      }
-      if (rovina) m.rotation.z += (caso() - 0.5) * 0.12
-      scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m); meshDi.set(p.id, { m, w, h, aTerra })
+    // l'allestimento a nuvola (come in un salone): il curatore appende le tavole su pareti invisibili, grandi quanto
+    // le ama, la più amata al centro e più in alto, le altre attorno senza toccarsi; ogni tavola è una lightbox
+    const imax = Math.max(1e-6, ...ord.map(p => p.i)), imin = Math.min(...ord.map(p => p.i))
+    const scala = p => 0.65 + 0.9 * ((p.i - imin) / (imax - imin || 1)) ** 1.3
+    const pareti = forma === 'corridoio' ? [{ o: [-16, 0], d: [1, 0], lungo: [0, 1] }, { o: [16, 0], d: [-1, 0], lungo: [0, 1] }]
+      : forma === 'abside' ? [{ o: [0, -26], d: [0, 1], lungo: [1, 0] }, { o: [-34, 6], d: [1, 0], lungo: [0, 1] }, { o: [34, 6], d: [-1, 0], lungo: [0, 1] }]
+      : [{ o: [0, 0], d: [0, 1], lungo: [1, 0] }]
+    const quote = forma === 'corridoio' ? [1, 1] : forma === 'abside' ? [2, 1, 1] : [1]
+    const perParete = pareti.map(() => []); { let k = 0; const tot = quote.reduce((a, b) => a + b, 0); ord.forEach((p, i) => { const slot = i === 0 ? 0 : (() => { let acc = 0, x = (k++ * 0.618) % 1 * tot; for (let j = 0; j < quote.length; j++) { acc += quote[j]; if (x < acc) return j } return 0 })(); perParete[slot].push(p) }) }
+    const piano = [80, 60]
+    perParete.forEach((lista, pi) => {
+      const P = pareti[pi], messe = []
+      lista.forEach((p, i) => {
+        const sc = scala(p) * (i === 0 && pi === 0 ? 1.35 : 1), W = w * sc, H = h * sc
+        // la spirale: dal centro della parete verso fuori, il primo posto libero (con un margine attorno)
+        let u = 0, v = 0
+        for (let t = 0; t < 400; t++) { const a = t * 0.55, r = t * 0.9; u = Math.cos(a) * r * 1.4; v = Math.sin(a) * r * 0.8; if (!messe.some(m => Math.abs(m.u - u) < (m.W + W) / 2 + 3 && Math.abs(m.v - v) < (m.H + H) / 2 + 3)) break }
+        messe.push({ u, v, W, H })
+        const lx = P.o[0] + P.lungo[0] * u, lz = P.o[1] + P.lungo[1] * u, [x, z] = aMondo(lx, lz), y = cy + 30 + v
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(W, H), tavolaMat(p.id)); m.rotation.y = verso(P.d[0], P.d[1]); m.position.set(x, y, z)
+        // la lightbox: una cornice bianca che fa luce, e dietro il buio
+        const cornice = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), new THREE.MeshBasicMaterial({ color: 0xf2f4ff })); cornice.position.copy(m.position); cornice.rotation.copy(m.rotation); cornice.translateZ(-0.12); scena.add(cornice)
+        const retro = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), new THREE.MeshBasicMaterial({ color: 0x101114 })); retro.position.copy(m.position); retro.rotation.copy(m.rotation); retro.translateZ(-0.25); retro.rotateY(Math.PI); scena.add(retro)
+        // il riflesso sul pavimento lucido: la tavola capovolta sotto terra, sfocata e che svanisce
+        const rif = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), materialeRiflesso(p.id, y - cy, H)); rif.position.set(x, cy - (y - cy), z); rif.rotation.copy(m.rotation); rif.scale.y = -1; rif.renderOrder = -1; scena.add(rif)
+        if (rovina) m.rotation.z += (caso() - 0.5) * 0.12
+        scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m); meshDi.set(p.id, { m, w: W, h: H, aTerra: false })
+      })
+      piano[0] = Math.max(piano[0], ...messe.map(m => Math.abs(m.u) * 2 + m.W)); piano[1] = Math.max(piano[1], ...messe.map(m => m.v + m.H / 2 + 30))
     })
     const nomeCur = sala.curatore ? nomeDi(sala.curatore) : null
-    const e = etichetta(`<div class="t">${esc(c.nome)}</div><div class="s">${q ? `${q.n} tavole` : ''}${rovina ? ' · abbandonata' : ''}${nomeCur ? ` · curata ${esc(da(nomeCur))}` : ''}</div>`, centro.clone().add(new THREE.Vector3(0, forma === 'strati' ? 8 + Math.ceil(n / 3) * 18 + 4 : h + 8, 0)), 700, 'sala')
+    const e = etichetta(`<div class="t">${esc(c.nome)}</div><div class="s">${q ? `${q.n} tavole` : ''}${rovina ? ' · abbandonata' : ''}${nomeCur ? ` · curata ${esc(da(nomeCur))}` : ''}</div>`, centro.clone().add(new THREE.Vector3(0, piano[1] + 10, 0)), 700, 'sala')
     const rec = { c, q, sala, centro, verso: ax, n, forma, aMondo, piano }
     e.el.onclick = () => vaiA(rec)
     sale.push(rec)
@@ -288,7 +282,7 @@
   // lega al suolo, i fili nell'aria le legano tra loro (quanto condividono le stesse aree). ──────────────────────
   const scritte = []
   {
-    const lista = [...parole.values()].sort((a, b) => b.tot - a.tot).slice(0, 30), taglie = [22, 13, 8, 6]
+    const lista = [...parole.values()].sort((a, b) => b.tot - a.tot).slice(0, 30), taglie = [14, 9, 6, 5]
     lista.forEach((P, i) => {
       const cl = i < 6 ? 0 : i < 14 ? 1 : 2, alto = taglie[cl], x = X(P.x), z = Z(P.y), y = altezza(x, z) + 46 + P.generale * 170 + (2 - cl) * 22
       const m = scritta(P.w, alto, cl === 0 ? '#f1ece2' : '#cfc9be', cl < 2 ? 600 : 500); m.position.set(x, y, z); m.renderOrder = 5; scena.add(m)
