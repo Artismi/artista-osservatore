@@ -74,7 +74,7 @@
   sole.shadow.mapSize.set(2048, 2048); Object.assign(sole.shadow.camera, { left: -700, right: 700, top: 700, bottom: -700, near: 10, far: 3000 }); sole.shadow.bias = -0.0006; scena.add(sole)
 
   // ── orbita: trascina per girare, destro (o maiuscolo) per spostarti, rotella per avvicinarti ───────────────
-  const O = { t: new THREE.Vector3(0, 20, 0), yaw: Math.PI / 4, pitch: 0.615, dist: 900, v: { yaw: 0, pitch: 0 }, auto: false }
+  const O = { t: new THREE.Vector3(0, 20, 0), yaw: Math.PI / 4, pitch: 0.615, dist: 560, v: { yaw: 0, pitch: 0 }, auto: false }
   let tira = null, volo = null
   cv.addEventListener('pointerdown', e => { tira = { x: e.clientX, y: e.clientY, b: e.button, sh: e.shiftKey, mosso: 0 }; O.auto = false; volo = null; cv.setPointerCapture(e.pointerId) })
   cv.addEventListener('pointermove', e => {
@@ -216,7 +216,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       let corpo = F.codice.replace(/#version[^\n]*\n/g, '').replace(/\bgl_FragCoord\b/g, 'vec4(vU*u_resolution,0.,1.)').replace(/void\s+main\s*\(\s*\)/, 'void fondo_main()')
       if (/mainImage\s*\(/.test(corpo)) corpo = corpo.replace(/void\s+fondo_main\s*\(\s*\)/, 'void fondo_main_x()') + '\nvoid fondo_main(){ vec4 c=vec4(0.); mainImage(c, vU*u_resolution); gl_FragColor=vec4(c.rgb,1.); }'
       const testa = `precision highp float;\nuniform float u_time; uniform vec2 u_resolution; uniform float u_seed; uniform sampler2D maschera; varying vec2 vU; varying vec2 vM;\n${/mainImage/.test(corpo) ? '#define iTime u_time\n#define iResolution vec3(u_resolution,1.)\n' : ''}`
-      const frag = testa + corpo + '\nvoid main(){ fondo_main(); gl_FragColor.a = texture2D(maschera, vM).r * .3; }'
+      const frag = testa + corpo + '\nvoid main(){ fondo_main(); gl_FragColor.a = texture2D(maschera, vM).r * .62; }'
       if (!prova(frag)) return
       // la toppa copre solo dove la maschera dell'area c'è
       let i0 = GN, i1 = 0, j0 = GN, j1 = 0; const M = maschere[k]; for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) if (M[j * GN + i] > 8) { i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j) }
@@ -251,7 +251,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   const etichetta = (html, p, lontano, cls = '') => { const el = document.createElement('div'); el.className = 'et ' + cls; el.innerHTML = html; strato.appendChild(el); const e = { el, p, lontano }; etichette.push(e); return e }
   const texDi = new Map(), texture = id => { if (!texDi.has(id)) texDi.set(id, new Promise(ok => carica.load(`img/${id}.jpg`, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; ok(t) }, undefined, () => ok(null)))); return texDi.get(id) }
   const tavolaMatDa = url => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); carica.load(url, t => { t.encoding = THREE.sRGBEncoding; m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
-  const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); m.userData.tavola = true; texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xd8d8d8); m.needsUpdate = true }); return m }
+  const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); m.userData.tavola = true; texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
   const materialeRiflesso = (id, alto, H) => { if (true) return new THREE.MeshBasicMaterial({ visible: false }); const mat = new THREE.ShaderMaterial({ uniforms: { mappa: { value: null } }, transparent: true, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
     fragmentShader: `uniform sampler2D mappa; varying vec2 vUv; void main(){ vec3 c = vec3(0.); for (int i=-2;i<=2;i++) for (int j=-2;j<=2;j++) c += texture2D(mappa, vUv + vec2(float(i),float(j))*.012).rgb; c /= 25.; float f = smoothstep(0., 1., vUv.y) * ${(0.7 * Math.max(0.25, 1 - alto / 140)).toFixed(3)}; gl_FragColor = vec4(c, f); }` })
@@ -486,7 +486,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   const corse = []
   {
     const glow = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv) })()
-    const coppie = (D.fili ?? []).filter(([a, b]) => meshDi.has(D.punti[a]?.id) && meshDi.has(D.punti[b]?.id)).sort((x, y) => y[2] - x[2]).slice(0, 140)
+    const coppie = (D.fili ?? []).filter(([a, b]) => meshDi.has(D.punti[a]?.id) && meshDi.has(D.punti[b]?.id)).sort((x, y) => y[2] - x[2]).slice(0, 60)
     const lin = [], col = [], COL = [new THREE.Color(0x8fd0ff), new THREE.Color(0xffb46a)]
     for (const [a, b, w] of coppie) {
       const A = meshDi.get(D.punti[a].id).m.position, B = meshDi.get(D.punti[b].id).m.position, M = A.clone().lerp(B, 0.5); M.y = Math.min(A.y, B.y) - 6 - A.distanceTo(B) * 0.08
@@ -495,7 +495,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       corse.push({ pts, t: Math.random(), v: 0.05 + Math.random() * 0.08, c })
     }
     const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3)); gl.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
-    scena.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false })))
+    scena.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })))
     const pos = new Float32Array(corse.length * 3), cc = new Float32Array(corse.length * 3); corse.forEach((q, i) => cc.set([q.c.r, q.c.g, q.c.b], i * 3))
     const gp = new THREE.BufferGeometry(); gp.setAttribute('position', new THREE.BufferAttribute(pos, 3)); gp.setAttribute('color', new THREE.BufferAttribute(cc, 3))
     var lucine = new THREE.Points(gp, new THREE.PointsMaterial({ size: 14, map: glow, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: false })); scena.add(lucine)
@@ -731,11 +731,13 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
           vC = color; vA = 1. - vic; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.); gl_PointSize = (.9 + seme * .9) * uPx; }`,
       fragmentShader: `varying vec3 vC; varying float vA; void main(){ vec2 c = gl_PointCoord - .5; float r = length(c); if (r > .5) discard; gl_FragColor = vec4(vC * 1.35, vA * .9); }`,
       vertexColors: true })
-    NUVOLA.userData.pieno = true; const pts = new THREE.Points(geo, NUVOLA); pts.renderOrder = 1; pts.frustumCulled = false; scena.add(pts)
+    NUVOLA = null // la nuvola di punti è stata provata e messa da parte: rendeva la città illeggibile
   }
   const figure = new Set(gente.map(p => p.g)); for (const [, o] of meshDi) if (o.cornice?.material) o.cornice.material.userData.pieno = true
-  scena.traverse(o => { let f = o; while (f) { if (figure.has(f)) return; f = f.parent } if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(ologrammizza) })
-  const aggiornaOcchi = () => { let n = 0; for (const p of gente) { if (n >= MAXO || !p.g.visible) continue; const o = p.ore[Math.floor(oraCitta()) % 24], all = o && !/cammina|passeggia/.test(o.fa) ? 1 : 0.7; OCCHI.value[n++].set(p.g.position.x, p.g.position.z, (55 + 35 * all) * (O.dist > 1200 ? 1.5 : 1), 0) } NOCCHI.value = n }
+  // (l'ologramma fuori dalle bolle è spento: la città resta tutta piena)
+  const pozze = gente.map(p => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,230,190,.9)'); gr.addColorStop(1, 'rgba(255,200,170,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64)
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(26, 26), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.45 })); m.rotation.x = -Math.PI / 2; m.renderOrder = 3; scena.add(m); return m })
+  const aggiornaOcchi = () => { gente.forEach((p, i) => { const q = pozze[i]; q.visible = p.g.visible; q.position.set(p.g.position.x, p.g.position.y + 0.4, p.g.position.z) }); let n = 0; for (const p of gente) { if (n >= MAXO || !p.g.visible) continue; const o = p.ore[Math.floor(oraCitta()) % 24], all = o && !/cammina|passeggia/.test(o.fa) ? 1 : 0.7; OCCHI.value[n++].set(p.g.position.x, p.g.position.z, (55 + 35 * all) * (O.dist > 1200 ? 1.5 : 1), 0) } NOCCHI.value = n }
 
   const v3 = new THREE.Vector3(); let prima = performance.now()
   O.t.set(0, 0, 0); O.dist = Math.max(LX, LZ) * 0.95
