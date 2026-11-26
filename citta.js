@@ -136,7 +136,9 @@
   // la geologia di stateyour sotto la città: altezze, mari (dove la crosta non emerge), crinali (dove le placche spingono)
   const GEO = K.geologia, GL = GEO?.lato ?? 0
   const geoA = (x, z) => { if (!GL) return 0; const u = Math.min(GL - 1, Math.max(0, Math.floor((x / S + cxT) / 1000 * GL))), v = Math.min(GL - 1, Math.max(0, Math.floor((z / S + cyT) / 1000 * GL))); return GEO.alt[v * GL + u] }
-  function altezza(x, z) { return altezzaBase(x, z) + geoLiscia(x, z) }
+  // oltre la città il mondo curva e scende nel buio, come un orizzonte vicino
+  const RAGGIO = Math.max(LX, LZ) * 0.62
+  function altezza(x, z) { const d = Math.hypot(x, z), giu = d > RAGGIO ? -((d - RAGGIO) ** 2) * 0.0016 : 0; return altezzaBase(x, z) + geoLiscia(x, z) + giu }
   function geoLiscia(x, z) { if (!GL) return 0; let s = 0; for (const [dx, dz] of [[0, 0], [12, 0], [-12, 0], [0, 12], [0, -12]]) s += geoA(x + dx, z + dz); return Math.max(-6, Math.min(10, s / 5 / 8000 * 14)) }
   function altezzaBase(x, z) {
     const u = (x - GX0) / GLX * (GN - 1), v = (z - GZ0) / GLZ * (GN - 1)
@@ -200,10 +202,10 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
         vec3 rosa = mix(vec3(.93,.66,.62), vec3(.98,.78,.66), pn9(vMondo.xz * .03)) * (.94 + .08 * pn9(pm * 5.)); rosa = pow(rosa, vec3(2.2));
         diffuseColor.rgb = mix(prato, rosa, terra);`)
         .replace('#include <fog_fragment>', `#include <fog_fragment>
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, pow(nebbia, vec3(2.2)), smoothstep(occhio.z * .9, occhio.z * 2.2, length(vMondo.xz - occhio.xy)));`)
+        float lontano = length(vMondo.xz); gl_FragColor.rgb *= 1. - smoothstep(${(Math.max(LX, LZ) * 0.5).toFixed(1)}, ${(Math.max(LX, LZ) * 0.95).toFixed(1)}, lontano); gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(.004,.005,.006), smoothstep(occhio.z * 1.4, occhio.z * 2.6, length(vMondo.xz - occhio.xy)));`)
     }
     const terra = new THREE.Mesh(geo, mat); terra.receiveShadow = true; scena.add(terra)
-    scena.background = cieloTx
+    scena.background = new THREE.Color(0x030405) // attorno, il buio: la città è un'isola di luce
   }
   // i fondi delle aree: lo shader che il curatore ha composto (o raccolto), steso dentro il lotto dell'area
   const fondiVivi = []
