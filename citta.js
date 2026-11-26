@@ -95,6 +95,7 @@
     const bt = (t, tit, fn) => { const b = document.createElement('button'); b.textContent = t; b.title = tit; b.style.cssText = 'width:38px;height:38px;border:1px solid rgba(232,226,214,.35);background:rgba(12,13,16,.8);color:#e8e2d6;font:16px Inter,sans-serif;cursor:pointer'; b.onclick = e => { e.stopPropagation(); O.auto = false; volo = null; fn() }; pan.appendChild(b) }
     const gira = k => { O.yaw += k * Math.PI / 4 }, zoom = k => { O.dist = Math.min(2600, Math.max(40, O.dist * k)) }
     bt('⟲', 'ruota a sinistra (Q)', () => gira(1)); bt('⟳', 'ruota a destra (E)', () => gira(-1)); bt('+', 'avvicina (+)', () => zoom(0.7)); bt('−', 'allontana (−)', () => zoom(1.4)); bt('◇', "torna all'insieme", () => { O.dist = 900; O.t.set(0, 20, 0); O.yaw = Math.PI / 4 })
+  { let f = 'griglia'; try { f = new URLSearchParams(location.search).get('forma') ?? localStorage.getItem('cittaForma') ?? 'griglia' } catch (_) {} bt(f === 'muffa' ? '▦' : '❋', f === 'muffa' ? 'la città a isolati' : 'la città come una muffa', () => { const q = new URLSearchParams(location.search); q.set('forma', f === 'muffa' ? 'griglia' : 'muffa'); location.search = q.toString() }) }
     document.body.appendChild(pan)
     addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.key === 'q' || e.key === 'Q') gira(1); else if (e.key === 'e' || e.key === 'E') gira(-1); else if (e.key === '+' || e.key === '=') zoom(0.8); else if (e.key === '-') zoom(1.25) })
     let prima = null
@@ -253,8 +254,9 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   // doppio, le case mezzo lotto, due per isolato); le strade corrono tra i lotti e nascono dove gli abitanti passano davvero:
   // ogni loro andare (le vie della vita) cerca il percorso più breve, preferendo le strade che ci sono già. Così le vie battute
   // diventano corsi larghi, le altre restano vie e sentieri. Lo costruiscono loro, giorno dopo giorno. ───────────────────────────
-  const CELLA = 100, URB = { lotti: new Map(), lati: new Map(), strade: [], percorsi: new Map() }
-  {
+  const CELLA = 100, URB = { lotti: new Map(), lati: new Map(), strade: [], percorsi: new Map(), forma: 'griglia' }
+  const FORMA_C = (() => { const f = new URLSearchParams(location.search).get('forma'); try { if (f) localStorage.setItem('cittaForma', f); return f ?? localStorage.getItem('cittaForma') ?? 'griglia' } catch (_) { return f ?? 'griglia' } })()
+  function cittaGriglia() {
     const VIu = D.vita, occ = new Map(), k2 = (i, j) => i + ',' + j, mezze = []
     const libero = (i, j, w, h) => { for (let a = 0; a < w; a++) for (let b = 0; b < h; b++) if (occ.has(k2(i + a, j + b))) return false; return true }
     const prendi = (id, x, z, w, h, tipo) => {
@@ -281,8 +283,17 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     for (const l of per('confine')) prendi(l.id, ...WP(l), 1, 1, 'confine')
     for (const l of per('piazza')) if (l.id !== 'piazza') prendi(l.id, ...WP(l), 1, 1, 'piazzetta')
     for (const l of per('casa')) prendiCasa(l.id, ...WP(l))
+    // le parole sono gli incroci: ogni concetto del database vettoriale prende l'angolo d'isolato più vicino al suo punto
+    // (i più pesanti scelgono per primi). Le loro relazioni diventano i corsi: la città prende forma da lì.
+    const KPu = D.costruito?.parole ?? {}, PW = Object.entries(KPu).map(([w, q]) => ({ w, x: X(q.x), z: Z(q.y), q, peso: (q.vett ?? []).reduce((a, b) => a + b, 0) })).sort((a, b) => b.peso - a.peso)
+    URB.parole = new Map(); URB.relazioni = []
+    { const presi = new Set(); for (const L of new Set(URB.lotti.values())) if (L.w === 2 && L.tipo !== 'piazza') presi.add(k2(L.i + 1, L.j + 1))
+      for (const P of PW) { const a0 = Math.round(P.x / CELLA + 0.5), b0 = Math.round(P.z / CELLA + 0.5); let ok = null
+        for (let r = 0; r < 12 && !ok; r++) for (let a = -r; a <= r && !ok; a++) for (let b = -r; b <= r && !ok; b++) if (Math.max(Math.abs(a), Math.abs(b)) === r && !presi.has(k2(a0 + a, b0 + b))) ok = [a0 + a, b0 + b]
+        if (!ok) continue; presi.add(k2(...ok)); P.a = ok[0]; P.b = ok[1]; URB.parole.set(P.w, P) } }
     // la rete: i nodi sono gli angoli degli isolati, i lati i tratti di strada tra due angoli
     let i0 = 1e9, i1 = -1e9, j0 = 1e9, j1 = -1e9; for (const L of URB.lotti.values()) { i0 = Math.min(i0, L.i); j0 = Math.min(j0, L.j); i1 = Math.max(i1, L.i + L.w); j1 = Math.max(j1, L.j + L.h) }
+    for (const P of URB.parole.values()) { i0 = Math.min(i0, P.a); j0 = Math.min(j0, P.b); i1 = Math.max(i1, P.a); j1 = Math.max(j1, P.b) }
     i0 -= 1; j0 -= 1; i1 += 1; j1 += 1
     const NX = i1 - i0 + 1, NZ = j1 - j0 + 1, nodo = (a, b) => (b - j0) * NX + (a - i0), nodoXZ = n => [((n % NX) + i0 - 0.5) * CELLA, (Math.floor(n / NX) + j0 - 0.5) * CELLA]
     URB.nodoXZ = nodoXZ
@@ -301,17 +312,23 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
         for (const m of vicini(n)) { const c = costo(n, m); if (!isFinite(c)) continue; const nd = d + c; if (nd < (dist.get(m) ?? Infinity)) { dist.set(m, nd); prev.set(m, n); push(m, nd) } } }
       return null }
     const costoNuovo = (n, m) => { const k = latoK(n, m); if (chiusi.has(k)) return Infinity; return (uso.has(k) ? 0.55 : 1) }
+    // prima le relazioni tra le parole: ognuna traccia il suo corso (pesa come una via battutissima)
+    { const visti = new Set(); for (const P of URB.parole.values()) for (const v of P.q.vicini ?? []) { const Q = URB.parole.get(v); if (!Q) continue; const k = [P.w, Q.w].sort().join('|'); if (visti.has(k)) continue; visti.add(k)
+        const via = dijkstra([nodo(P.a, P.b)], [nodo(Q.a, Q.b)], costoNuovo); if (!via) continue; for (let k = 1; k < via.length; k++) { const q = latoK(via[k - 1], via[k]); uso.set(q, (uso.get(q) ?? 0) + 40) } URB.relazioni.push({ A: P.w, B: Q.w, via, peso: P.peso + Q.peso }) } }
+    for (const P of URB.parole.values()) P.n = nodo(P.a, P.b)
+    URB.latoK = latoK
     const vie = (VIu?.vie ?? []).filter(v => v[2] >= 2 && URB.lotti.has(v[0]) && URB.lotti.has(v[1]) && URB.lotti.get(v[0]) !== URB.lotti.get(v[1])).sort((a, b) => b[2] - a[2]).slice(0, 520)
     for (const [a, b, n] of vie) { const via = dijkstra(bordo(URB.lotti.get(a)), bordo(URB.lotti.get(b)), costoNuovo); if (!via) continue; for (let k = 1; k < via.length; k++) { const q = latoK(via[k - 1], via[k]); uso.set(q, (uso.get(q) ?? 0) + n) } }
     // chi è rimasto fuori dalla rete ci si allaccia con un tratto nuovo (poco battuto)
     const inRete = () => { const s = new Set(); for (const k of uso.keys()) for (const n of k.split('-')) s.add(+n); return s }
     let rete = inRete()
     for (const L of new Set(URB.lotti.values())) { const b = bordo(L); if (b.some(n => rete.has(n)) || !rete.size) continue; const via = dijkstra(b, [...rete], costoNuovo); if (!via) continue; for (let k = 1; k < via.length; k++) { const q = latoK(via[k - 1], via[k]); uso.set(q, (uso.get(q) ?? 0) + 1) } via.forEach(n => rete.add(n)) }
+    for (const P of URB.parole.values()) { if (rete.has(P.n) || !rete.size) continue; const via = dijkstra([P.n], [...rete], costoNuovo); if (!via) continue; for (let k = 1; k < via.length; k++) { const q = latoK(via[k - 1], via[k]); uso.set(q, (uso.get(q) ?? 0) + 6) } via.forEach(n => rete.add(n)) }
     // il rango: corso, via, sentiero (e i lati dentro la piazza sono lastricato)
     const valori = [...uso.values()].sort((a, b) => b - a), soglia = q => valori[Math.floor(valori.length * q)] ?? 0, sCorso = soglia(0.14), sVia = soglia(0.5)
     for (const [k, u] of uso) { const [n, m] = k.split('-').map(Number), [ax, az] = nodoXZ(n), [bx, bz] = nodoXZ(m)
       const rango = u >= sCorso ? 'corso' : u >= sVia ? 'via' : 'sentiero', largo = { corso: 14, via: 9, sentiero: 4.5 }[rango]
-      const S0 = { k, n, m, a: [ax, az], b: [bx, bz], uso: u, rango, largo, oriz: az === bz, lati: [[], []] }; URB.lati.set(k, S0); URB.strade.push(S0) }
+      const S0 = { k, n, m, a: [ax, az], b: [bx, bz], pts: [[ax, az], [bx, bz]], vis: [[ax, az], [bx, bz]], uso: u, rango, largo, oriz: az === bz, lati: [[], []] }; URB.lati.set(k, S0); URB.strade.push(S0) }
     // il percorso a piedi tra due nodi della rete: le strade larghe costano un po' meno
     const costoPiedi = (n, m) => { const S0 = URB.lati.get(latoK(n, m)); return S0 ? (S0.rango === 'corso' ? 0.8 : S0.rango === 'via' ? 0.9 : 1) : Infinity }
     // la porta di un lotto: il punto del suo bordo sulla strada più battuta che lo tocca
@@ -333,10 +350,102 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       const pts = [A.porta.p]; if (via) for (const n of via) pts.push(nodoXZ(n)); pts.push(B.porta.p)
       URB.percorsi.set(k, pts); return pts }
     URB.inRete = rete
+    URB.traNodi = (a, b) => (dijkstra([a], [b], costoPiedi) ?? [b]).map(nodoXZ)
     // i luoghi «strada» (la strada per…): stanno sul tratto di strada più vicino
     for (const l of per('strada')) { const [x, z] = WP(l); let best = null, bd = Infinity; for (const S0 of URB.strade) { const mx = (S0.a[0] + S0.b[0]) / 2, mz = (S0.a[1] + S0.b[1]) / 2, d = Math.hypot(mx - x, mz - z); if (d < bd) { bd = d; best = S0 } }
       if (best) { const mx = (best.a[0] + best.b[0]) / 2, mz = (best.a[1] + best.b[1]) / 2; URB.lotti.set(l.id, { id: l.id, tipo: 'strada', x: mx, z: mz, lx: 20, lz: 20, w: 0, h: 0, porta: { lato: 'S', nodi: [best.n, best.m], p: [mx, mz], S: best } }) } }
   }
+
+  // ── la città come una muffa: niente griglia. I luoghi stanno dove li mette la memoria (il loro punto nel territorio),
+  // scostati quel tanto che basta per non toccarsi; tra loro germinano spore, e la rete cresce come un fisaro: tra le
+  // parole legate e lungo le vie della vita si rinforzano i tubi più battuti, gli altri non nascono nemmeno. Le strade
+  // curvano, si gonfiano agli incroci, i luoghi ci stanno appesi come frutti, ognuno col suo peduncolo. ─────────────────────
+  function cittaMuffa() {
+    const VIu = D.vita, luoghi = VIu?.luoghi ?? [], per = t => luoghi.filter(l => l.tipo === t), WP = l => [X(l.x), Z(l.y)]
+    const corpi = [] // i luoghi come dischi: x, z, raggio
+    const metti = (id, x, z, r, tipo) => { const L = { id, tipo, x, z, r, lx: r * 2, lz: r * 2, w: 1, h: 1 }; URB.lotti.set(id, L); corpi.push(L); return L }
+    metti('piazza', PZ.x, PZ.z, 105, 'piazza')
+    for (const c of costr.filter(c => c.tipo === 'capsula' && c.pos?.x != null)) { const L = metti('capsula:' + c.id, X(c.pos.x), Z(c.pos.y), 92, 'sala'); URB.lotti.set('sala:' + c.q, L) }
+    for (const l of luoghi) if (['mensa', 'biblioteca', 'bottega', 'officina', 'osservatorio', 'archivio', 'assemblea', 'guardaroba'].includes(l.tipo)) metti(l.id, ...WP(l), 46, l.tipo)
+    for (const l of luoghi) if (['fontana', 'giardino'].includes(l.tipo)) metti(l.id, ...WP(l), 38, l.tipo)
+    for (const l of per('sala')) if (!URB.lotti.has(l.id)) metti(l.id, ...WP(l), 92, 'sala')
+    for (const l of per('confine')) metti(l.id, ...WP(l), 46, 'confine')
+    for (const l of per('piazza')) if (l.id !== 'piazza') metti(l.id, ...WP(l), 24, 'piazzetta')
+    for (const l of per('casa')) metti(l.id, ...WP(l), 24, 'casa')
+    // si scostano finché non si toccano più (la piazza non si muove)
+    for (let it = 0; it < 220; it++) { let mosso = false
+      for (let i = 0; i < corpi.length; i++) for (let j = i + 1; j < corpi.length; j++) { const A = corpi[i], B = corpi[j], dx = B.x - A.x, dz = B.z - A.z, d = Math.hypot(dx, dz) || 0.01, m = A.r + B.r + 16; if (d >= m) continue; mosso = true
+        const k = (m - d) / d, wa = A.id === 'piazza' ? 0 : B.id === 'piazza' ? 1 : 0.5, wb = 1 - wa; A.x -= dx * k * wa; A.z -= dz * k * wa; B.x += dx * k * wb; B.z += dz * k * wb }
+      if (!mosso) break }
+    // i nodi: le parole (incroci) e le spore che germinano negli spazi liberi tra i luoghi
+    const NODI = [], tipoN = [], libero = (x, z, m) => corpi.every(L => Math.hypot(L.x - x, L.z - z) > L.r + m)
+    const KPu = D.costruito?.parole ?? {}, PW = Object.entries(KPu).map(([w, q]) => ({ w, x: X(q.x), z: Z(q.y), q, peso: (q.vett ?? []).reduce((a, b) => a + b, 0) })).sort((a, b) => b.peso - a.peso)
+    URB.parole = new Map(); URB.relazioni = []
+    for (const P of PW) { let x = P.x, z = P.z; for (let r = 0; r < 400 && !(libero(x, z, 14) && NODI.every(([a, b]) => Math.hypot(a - x, b - z) > 30)); r += 6) { const a = r * 0.37; x = P.x + Math.cos(a) * r; z = P.z + Math.sin(a) * r }
+      P.n = NODI.length; NODI.push([x, z]); tipoN.push('parola'); URB.parole.set(P.w, P) }
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity; for (const L of corpi) { x0 = Math.min(x0, L.x - L.r); x1 = Math.max(x1, L.x + L.r); z0 = Math.min(z0, L.z - L.r); z1 = Math.max(z1, L.z + L.r) }
+    let hs = 7; const rnd = () => ((hs = (hs * 1664525 + 1013904223) >>> 0) / 4294967296)
+    for (let x = x0; x <= x1; x += 40) for (let z = z0; z <= z1; z += 40) { const px = x + (rnd() - 0.5) * 26, pz = z + (rnd() - 0.5) * 26
+      if (!libero(px, pz, 7) || NODI.some(([a, b]) => Math.hypot(a - px, b - pz) < 26)) continue
+      if (!corpi.some(L => Math.hypot(L.x - px, L.z - pz) < L.r + 140)) continue // solo dove c'è vita vicino
+      NODI.push([px, pz]); tipoN.push('spora') }
+    const nB = NODI.length // i luoghi vengono dopo: sono foglie, si raggiungono ma non si attraversano
+    const taglia = (ax, az, bx, bz, salta) => corpi.some(L => { if (salta.includes(L)) return false; const ex = bx - ax, ez = bz - az, L2 = ex * ex + ez * ez || 1, t = Math.max(0, Math.min(1, ((L.x - ax) * ex + (L.z - az) * ez) / L2)); return Math.hypot(ax + ex * t - L.x, az + ez * t - L.z) < L.r + 4 })
+    const adj = new Map(), cand = new Map(), latoK = (n, m) => n < m ? n + '-' + m : m + '-' + n
+    const lega = (n, m) => { const k = latoK(n, m); if (cand.has(k)) return; const [ax, az] = NODI[n], [bx, bz] = NODI[m]; cand.set(k, { n, m, len: Math.hypot(bx - ax, bz - az) }); if (!adj.has(n)) adj.set(n, []); if (!adj.has(m)) adj.set(m, []); adj.get(n).push(m); adj.get(m).push(n) }
+    for (let n = 0; n < nB; n++) { const [x, z] = NODI[n]; const vic = []; for (let m = 0; m < nB; m++) if (m !== n) vic.push([Math.hypot(NODI[m][0] - x, NODI[m][1] - z), m]); vic.sort((a, b) => a[0] - b[0])
+      let k = 0; for (const [d, m] of vic) { if (k >= 6 || d > 190) break; if (taglia(x, z, NODI[m][0], NODI[m][1], [])) continue; lega(n, m); k++ } }
+    const corpiN = new Map()
+    // ogni luogo ha il suo peduncolo verso la spora o la parola più vicina che si raggiunge senza attraversare altri luoghi
+    for (const L of new Set(URB.lotti.values())) { L.nodo = NODI.length; corpiN.set(L.nodo, L); NODI.push([L.x, L.z]); tipoN.push('luogo')
+      const vic = []; for (let m = 0; m < nB; m++) vic.push([Math.hypot(NODI[m][0] - L.x, NODI[m][1] - L.z), m]); vic.sort((a, b) => a[0] - b[0])
+      let k = 0; for (const [, m] of vic) { if (k >= (L.r > 60 ? 3 : 2)) break; if (taglia(L.x, L.z, NODI[m][0], NODI[m][1], [L])) continue; lega(L.nodo, m); k++ }
+      if (!k && vic.length) lega(L.nodo, vic[0][1]) } // stretto tra gli altri: si allaccia comunque alla spora più vicina
+    const uso = new Map()
+    const dijkstra = (da, a, costo) => { const dist = new Map(), prev = new Map(), mete = new Set(a), H = []; const push = (n, d) => { H.push([d, n]); let i = H.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (H[p][0] <= H[i][0]) break; [H[p], H[i]] = [H[i], H[p]]; i = p } }
+      const pop = () => { const t = H[0], e = H.pop(); if (H.length) { H[0] = e; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < H.length && H[l][0] < H[m][0]) m = l; if (r < H.length && H[r][0] < H[m][0]) m = r; if (m === i) break; [H[m], H[i]] = [H[i], H[m]]; i = m } } return t }
+      for (const n of da) { dist.set(n, 0); push(n, 0) }
+      while (H.length) { const [d, n] = pop(); if (d > dist.get(n)) continue; if (mete.has(n)) { const via = [n]; let k = n; while (prev.has(k)) { k = prev.get(k); via.push(k) } return via.reverse() }
+        if (n >= nB && !da.includes(n)) continue // dentro un luogo non si passa
+        for (const m of adj.get(n) ?? []) { const c = costo(n, m); if (!isFinite(c)) continue; const nd = d + c; if (nd < (dist.get(m) ?? Infinity)) { dist.set(m, nd); prev.set(m, n); push(m, nd) } } }
+      return null }
+    // il fisaro: chi passa rinforza, e un tubo già grosso costa meno (così i percorsi si raccolgono in pochi tubi)
+    const costoNuovo = (n, m) => { const c = cand.get(latoK(n, m)), u = uso.get(latoK(n, m)) ?? 0; return c.len * (1 / (1 + Math.log1p(u) * 0.35)) }
+    const segna = (via, w) => { for (let k = 1; k < via.length; k++) { const q = latoK(via[k - 1], via[k]); uso.set(q, (uso.get(q) ?? 0) + w) } }
+    { const visti = new Set(); for (const P of URB.parole.values()) for (const v of P.q.vicini ?? []) { const Q = URB.parole.get(v); if (!Q) continue; const k = [P.w, Q.w].sort().join('|'); if (visti.has(k)) continue; visti.add(k)
+        const via = dijkstra([P.n], [Q.n], costoNuovo); if (!via) continue; segna(via, 40); URB.relazioni.push({ A: P.w, B: Q.w, via, peso: P.peso + Q.peso }) } }
+    const vie = (VIu?.vie ?? []).filter(v => v[2] >= 2 && URB.lotti.has(v[0]) && URB.lotti.has(v[1]) && URB.lotti.get(v[0]) !== URB.lotti.get(v[1])).sort((a, b) => b[2] - a[2]).slice(0, 520)
+    for (const [a, b, n] of vie) { const via = dijkstra([URB.lotti.get(a).nodo], [URB.lotti.get(b).nodo], costoNuovo); if (via) segna(via, n) }
+    const rete = new Set(); for (const k of uso.keys()) for (const n of k.split('-')) rete.add(+n)
+    for (const L of new Set(URB.lotti.values())) { if (rete.has(L.nodo) || !rete.size) continue; const via = dijkstra([L.nodo], [...rete].filter(n => n < nB), costoNuovo); if (!via) continue; segna(via, 1); via.forEach(n => rete.add(n)) }
+    for (const P of URB.parole.values()) { if (rete.has(P.n) || !rete.size) continue; const via = dijkstra([P.n], [...rete].filter(n => n < nB), costoNuovo); if (!via) continue; segna(via, 6); via.forEach(n => rete.add(n)) }
+    // i tubi: curve morbide (piegate un poco, sempre dallo stesso lato per la stessa coppia), larghe quanto sono battute
+    const valori = [...uso.values()].sort((a, b) => b - a), soglia = q => valori[Math.floor(valori.length * q)] ?? 0, sCorso = soglia(0.14), sVia = soglia(0.5)
+    for (const [k, u] of uso) { const [n, m] = k.split('-').map(Number), A = NODI[n], B = NODI[m]
+      const rango = u >= sCorso ? 'corso' : u >= sVia ? 'via' : 'sentiero', largo = { corso: 12 + Math.min(8, Math.log1p(u)), via: 8, sentiero: 4.5 }[rango]
+      const ex = B[0] - A[0], ez = B[1] - A[1], len = Math.hypot(ex, ez) || 1, h = ((n * 73856093) ^ (m * 19349663)) >>> 0, piega = (((h % 1000) / 1000) - 0.5) * 0.36 * len
+      const cx = (A[0] + B[0]) / 2 - ez / len * piega, cz = (A[1] + B[1]) / 2 + ex / len * piega, pts = []
+      for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push([(1 - t) ** 2 * A[0] + 2 * (1 - t) * t * cx + t * t * B[0], (1 - t) ** 2 * A[1] + 2 * (1 - t) * t * cz + t * t * B[1]]) }
+      // dentro il disco di un luogo il tubo non si vede: comincia dal suo bordo
+      const dentro = (q, L) => L && Math.hypot(q[0] - L.x, q[1] - L.z) < L.r * 0.92, Ln = n >= nB ? corpiN.get(n) : null, Lm = m >= nB ? corpiN.get(m) : null
+      const visibili = pts.filter(q => !dentro(q, Ln) && !dentro(q, Lm))
+      const S0 = { k, n, m, pts, vis: visibili.length >= 2 ? visibili : pts, a: pts[0], b: pts[pts.length - 1], uso: u, rango, largo, lati: [[], []], pedu: n >= nB || m >= nB }; URB.lati.set(k, S0); URB.strade.push(S0) }
+    // la porta di ogni luogo: dove il suo peduncolo più battuto tocca il bordo, e la stanza guarda da quella parte
+    for (const L of new Set(URB.lotti.values())) { let best = null; for (const m of adj.get(L.nodo) ?? []) { const S0 = URB.lati.get(latoK(L.nodo, m)); if (S0 && (!best || S0.uso > best.uso)) best = S0 }
+      const verso = best ? (best.n === L.nodo ? best.pts[3] : best.pts[best.pts.length - 4]) : [L.x, L.z + 1], dx = verso[0] - L.x, dz = verso[1] - L.z, d = Math.hypot(dx, dz) || 1
+      L.ry = Math.atan2(dx, dz); L.porta = { nodi: [L.nodo], p: [L.x + dx / d * L.r * 0.9, L.z + dz / d * L.r * 0.9], S: best } }
+    URB.nodoXZ = n => NODI[n]; URB.latoK = latoK; URB.inRete = new Set([...rete].filter(n => n < nB))
+    URB.nodoVicino = (x, z) => { let best = null, bd = Infinity; for (const n of URB.inRete) { const d = Math.hypot(NODI[n][0] - x, NODI[n][1] - z); if (d < bd) { bd = d; best = n } } return best }
+    const costoPiedi = (n, m) => { const S0 = URB.lati.get(latoK(n, m)); return S0 ? cand.get(latoK(n, m)).len * (S0.rango === 'corso' ? 0.8 : S0.rango === 'via' ? 0.9 : 1) : Infinity }
+    const lungo = via => { const out = []; for (let k = 1; k < via.length; k++) { const S0 = URB.lati.get(latoK(via[k - 1], via[k])); if (!S0) continue; const p = S0.n === via[k - 1] ? S0.pts : S0.pts.slice().reverse(); out.push(...(out.length ? p.slice(1) : p)) } return out }
+    URB.traNodi = (a, b) => { const via = dijkstra([a], [b], costoPiedi); return via ? lungo(via) : [NODI[b]] }
+    URB.percorso = (A, B) => { const k = A.id + '>' + B.id; if (URB.percorsi.has(k)) return URB.percorsi.get(k); const via = A !== B ? dijkstra([A.nodo], [B.nodo], costoPiedi) : null
+      const pts = via ? lungo(via) : [A.porta.p, B.porta.p]; URB.percorsi.set(k, pts); return pts }
+    for (const l of per('strada')) { const [x, z] = WP(l); let best = null, bd = Infinity; for (const S0 of URB.strade) { if (S0.pedu) continue; const q = S0.pts[6], d = Math.hypot(q[0] - x, q[1] - z); if (d < bd) { bd = d; best = S0 } }
+      if (best) { const q = best.pts[6]; URB.lotti.set(l.id, { id: l.id, tipo: 'strada', x: q[0], z: q[1], lx: 20, lz: 20, r: 10, w: 0, h: 0, nodo: best.n, porta: { nodi: [best.n], p: q, S: best } }) } }
+    URB.forma = 'muffa'
+  }
+  if (FORMA_C === 'muffa') cittaMuffa(); else cittaGriglia()
   { const L = URB.lotti.get('piazza'); if (L) PZ.set(L.x, 0, L.z) }
   // ── i disegni resi 3d dal motore: una tavola diventa rilievo, la luce dell'immagine diventa altezza ──────────
   function rilievo(id, w, h, alto) {
@@ -430,44 +539,64 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   {
     const fronte = 0 // tutte rivolte allo stesso verso, come le pagine di un atlante aperto
     const resto = D.punti.filter(p => !meshDi.has(p.id))
-    // lungo le strade: ogni tavola va sul ciglio del tratto più vicino al suo punto del territorio, rivolta verso chi passa,
-    // in fila con le sue vicine (nell'ordine in cui stanno nel territorio); quando il ciglio è pieno, una seconda fila sopra
+    // lungo le strade: le tavole fanno le facciate della città. Una tavola che nomina due parole legate sta sul corso che le
+    // unisce; se ne nomina una sola, sulle strade che partono dal suo incrocio, il più vicino possibile; le altre sul tratto
+    // più vicino al loro punto del territorio. Rivolte verso chi passa, in file, una sopra l'altra quando il ciglio è pieno.
     const dSeg = (x, z, a, b) => { const ex = b[0] - a[0], ez = b[1] - a[1], L2 = ex * ex + ez * ez || 1, t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / L2)); return Math.hypot(x - a[0] - ex * t, z - a[1] - ez * t) }
-    const MARG = 18, PASSO = 2.4, lista = resto.filter(p => p.img || p.mini).map(p => { const k = 0.35 + (p.i ?? 0.3), W = 3.5 + 7 * k; return { p, W, H: W * 1.25, x: X(p.x), z: Z(p.y) } }).sort((a, b) => (b.p.i ?? 0) - (a.p.i ?? 0))
-    for (const s of URB.strade) s.cap = [2 * (CELLA - 2 * MARG), 2 * (CELLA - 2 * MARG)]
-    for (const t of lista) { const cands = URB.strade.map(s => [dSeg(t.x, t.z, s.a, s.b), s]).sort((a, b) => a[0] - b[0]).slice(0, 14)
-      for (const [, s] of cands) { const lato = s.oriz ? (t.z > s.a[1] ? 1 : 0) : (t.x > s.a[0] ? 1 : 0); for (const sd of [lato, 1 - lato]) if (s.cap[sd] >= t.W + PASSO) { s.cap[sd] -= t.W + PASSO; s.lati[sd].push(t); t.s = s; break } if (t.s) break } }
+    const MARG = 16, PASSO = 1.6, FILE = 3, CAP = FILE * (CELLA - 2 * MARG)
+    const PAR = [...URB.parole.values()].map(P => ({ P, r: radiceP(P.w) }))
+    const lista = resto.map(p => { const con = !!(p.img || p.mini), k = 0.35 + (p.i ?? 0.3), W = con ? 6 + 8 * k : 5.2, t = (p.t ?? '').toLowerCase(); return { p, con, W, H: W * 1.25, x: X(p.x), z: Z(p.y), parole: PAR.filter(q => t.includes(q.r)).map(q => q.P) } })
+      .sort((a, b) => (b.con - a.con) || (b.parole.length - a.parole.length) || ((b.p.i ?? 0) - (a.p.i ?? 0)))
+    // una strada è una linea spezzata (dritta nella griglia, curva nella muffa): lunghezza, punto e normale a una data distanza
+    for (const s of URB.strade) { s.cum = [0]; for (let i = 1; i < s.vis.length; i++) s.cum.push(s.cum[i - 1] + Math.hypot(s.vis[i][0] - s.vis[i - 1][0], s.vis[i][1] - s.vis[i - 1][1])); s.L = s.cum[s.cum.length - 1]
+      const c = s.pedu || s.L < 2 * MARG + 8 ? 0 : FILE * (s.L - 2 * MARG); s.cap = [c, c] }
+    const vicinoSu = (s, x, z) => { let best = [Infinity, 0, 0]; for (let i = 1; i < s.vis.length; i++) { const a = s.vis[i - 1], b = s.vis[i], ex = b[0] - a[0], ez = b[1] - a[1], L2 = ex * ex + ez * ez || 1, t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / L2)), d = Math.hypot(a[0] + ex * t - x, a[1] + ez * t - z)
+        if (d < best[0]) best = [d, s.cum[i - 1] + t * Math.sqrt(L2), (ex * (z - a[1]) - ez * (x - a[0])) > 0 ? 1 : 0] } return best } // [distanza, a che punto, da che lato]
+    const puntoSu = (s, l) => { let i = 1; while (i < s.vis.length - 1 && s.cum[i] < l) i++; const a = s.vis[i - 1], b = s.vis[i], seg = (s.cum[i] - s.cum[i - 1]) || 1, t = (l - s.cum[i - 1]) / seg; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, (b[0] - a[0]) / seg, (b[1] - a[1]) / seg] }
+    const latoDi = (n, m) => URB.lati.get(URB.latoK(n, m)), perRel = new Map(URB.relazioni.map(R => [[R.A, R.B].sort().join('|'), R]))
+    // le strade attorno a un incrocio, a due passi al massimo, dalla più vicina
+    const attorno = n => { const out = [], visti = new Set([n]); let fronte = [n]; for (let d = 0; d < 3 && fronte.length; d++) { const nuovo = []; for (const a of fronte) for (const s of URB.strade) { if (s.n !== a && s.m !== a) continue; if (!out.includes(s)) out.push(s); const b = s.n === a ? s.m : s.n; if (!visti.has(b)) { visti.add(b); nuovo.push(b) } } fronte = nuovo } return out }
+    const metti = (t, cands) => { for (const s of cands) { const [, lungoT, lato] = vicinoSu(s, t.x, t.z); t.l = lungoT; for (const sd of [lato, 1 - lato]) if (s.cap[sd] >= t.W + PASSO) { s.cap[sd] -= t.W + PASSO; s.lati[sd].push(t); t.s = s; return true } } return false }
+    for (const t of lista) {
+      let fatto = false
+      if (t.parole.length >= 2) for (let i = 0; i < t.parole.length && !fatto; i++) for (let j = i + 1; j < t.parole.length && !fatto; j++) { const R = perRel.get([t.parole[i].w, t.parole[j].w].sort().join('|')); if (!R) continue
+        const tratti = []; for (let k = 1; k < R.via.length; k++) { const s = latoDi(R.via[k - 1], R.via[k]); if (s) tratti.push(s) } tratti.sort((a, b) => (b.cap[0] + b.cap[1]) - (a.cap[0] + a.cap[1])); fatto = metti(t, tratti); if (fatto) t.rel = R }
+      if (!fatto && t.parole.length) fatto = metti(t, attorno(t.parole[0].n))
+      if (!fatto) fatto = metti(t, URB.strade.filter(s => !s.pedu).map(s => [dSeg(t.x, t.z, s.a, s.b), s]).sort((a, b) => a[0] - b[0]).slice(0, 24).map(x => x[1]))
+    }
     for (const s of URB.strade) for (const sd of [0, 1]) { const L = s.lati[sd]; if (!L.length) continue
-      const [ax, az] = s.a, [bx, bz] = s.b, ux = s.oriz ? Math.sign(bx - ax) : 0, uz = s.oriz ? 0 : Math.sign(bz - az), nx = s.oriz ? 0 : (sd ? 1 : -1), nz = s.oriz ? (sd ? 1 : -1) : 0, off = s.largo / 2 + 2.4
-      L.sort((p, q) => ((p.x - ax) * ux + (p.z - az) * uz) - ((q.x - ax) * ux + (q.z - az) * uz))
+      const off = s.largo / 2 + 2.6
+      L.sort((p, q) => (q.con - p.con) || ((p.l ?? 0) - (q.l ?? 0)))
       let c = MARG, alto = 0, rigaH = 0
-      for (const t of L) { if (c + t.W > CELLA - MARG) { c = MARG; alto += rigaH + 1.6; rigaH = 0 } const lungo = c + t.W / 2; c += t.W + PASSO; rigaH = Math.max(rigaH, t.H)
-        t.wx = ax + ux * lungo + nx * off; t.wz = az + uz * lungo + nz * off; t.wy = 1.2 + alto + t.H / 2; t.ry = Math.atan2(-nx, -nz) } }
-    for (const t of lista) { if (t.wx == null) continue; const { p, W, H } = t, x = t.wx, z = t.wz, y = t.wy, fronte = t.ry
+      for (const t of L) { if (c + t.W > s.L - MARG) { c = MARG; alto += rigaH + 1.2; rigaH = 0 } const lungo = c + t.W / 2; c += t.W + PASSO; rigaH = Math.max(rigaH, t.H)
+        const [px, pz, ux, uz] = puntoSu(s, lungo), nx = sd ? -uz : uz, nz = sd ? ux : -ux
+        t.wx = px + nx * off; t.wz = pz + nz * off; t.wy = 1.4 + alto + t.H / 2; t.ry = Math.atan2(-nx, -nz) } }
+    // le tavole con l'immagine: un piano e la sua cornice chiara
+    for (const t of lista) { if (t.wx == null || !t.con) continue; const { p, W, H } = t, x = t.wx, z = t.wz, y = t.wy, fronte = t.ry
       const m = new THREE.Mesh(new THREE.PlaneGeometry(W, H), tavolaMatDa(p.img ? `img/${p.id}.jpg` : `mini/${p.id}.jpg`)); m.position.set(x, y, z); m.rotation.y = fronte
       const cornice = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.7, H + 0.7), new THREE.MeshBasicMaterial({ color: 0xd9dbe6 })); cornice.position.copy(m.position); cornice.rotation.y = fronte; cornice.translateZ(-0.08)
-      scena.add(cornice); scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m); meshDi.set(p.id, { m, w: W, h: H, aTerra: false, cornice })
+      scena.add(cornice); scena.add(m); m.userData = { tipo: 'tavola', p, nota: t.rel ? `Sta sul corso tra «${t.rel.A}» e «${t.rel.B}».` : '' }; cliccabili.push(m); meshDi.set(p.id, { m, w: W, h: H, aTerra: false, cornice })
     }
-    // i cartellini: i titoli delle tavole senza immagine, su poche tele grandi (una per 192 cartellini), uniti in una geometria sola per tela
-    const senza = resto.filter(p => !p.img && !p.mini).sort((a, b) => b.i - a.i).slice(0, 0), CW = 128, CH = 160, PER = 16 * 12
-    for (let t = 0; t * PER < senza.length; t++) {
-      const parte = senza.slice(t * PER, (t + 1) * PER), cv = document.createElement('canvas'); cv.width = 2048; cv.height = 1920; const g = cv.getContext('2d')
+    // le tavole che hanno solo il titolo: cartellini di carta col titolo stampato, su poche tele grandi (192 per tela)
+    const senza = lista.filter(t => t.wx != null && !t.con), CW = 128, CH = 160, PER = 16 * 12
+    for (let tt = 0; tt * PER < senza.length; tt++) {
+      const parte = senza.slice(tt * PER, (tt + 1) * PER), cv = document.createElement('canvas'); cv.width = 2048; cv.height = 1920; const g = cv.getContext('2d')
       const pos = [], uv = [], ind = []
-      parte.forEach((p, i) => {
+      parte.forEach((t, i) => { const p = t.p
         const cx = (i % 16) * CW, cy = Math.floor(i / 16) * CH
-        g.strokeStyle = 'rgba(232,226,214,.35)'; g.beginPath(); g.moveTo(cx + 9, cy + 6); g.lineTo(cx + 40, cy + 6); g.stroke()
-        g.fillStyle = '#e8e2d6'; g.font = '600 15px Inter, sans-serif'; const parole = (p.t || 'senza titolo').split(/\s+/); let riga = '', yy = cy + 24
+        g.fillStyle = '#efe9dc'; g.fillRect(cx + 2, cy + 2, CW - 4, CH - 4); g.fillStyle = '#16121b'; g.fillRect(cx + 9, cy + 10, 30, 3)
+        g.font = '600 15px Inter, sans-serif'; const parole = (p.t || 'senza titolo').split(/\s+/); let riga = '', yy = cy + 32
         for (const w of parole) { if (g.measureText(riga + ' ' + w).width > CW - 18) { g.fillText(riga, cx + 9, yy); riga = w; yy += 18; if (yy > cy + CH - 30) break } else riga = riga ? riga + ' ' + w : w }
         if (yy <= cy + CH - 30) g.fillText(riga, cx + 9, yy)
-        g.fillStyle = 'rgba(232,226,214,.5)'; g.font = '11px JetBrains Mono, monospace'; g.fillText(`giorno ${p.g}`, cx + 9, cy + CH - 12)
-        const x = X(p.x), z = Z(p.y), k = 0.3 + (p.i ?? 0.3), W = 3 + 6 * k, H = W * 1.25, y = altezza(x, z) + 8 + 34 * (p.i ?? 0.3), b = pos.length / 3
-        pos.push(x - W / 2, y - H / 2, z, x + W / 2, y - H / 2, z, x + W / 2, y + H / 2, z, x - W / 2, y + H / 2, z)
+        g.fillStyle = 'rgba(22,18,27,.55)'; g.font = '11px JetBrains Mono, monospace'; g.fillText(`giorno ${p.g}`, cx + 9, cy + CH - 12)
+        const W = t.W, H = t.H, c = Math.cos(t.ry), sn = Math.sin(t.ry), dx = c * W / 2, dz = -sn * W / 2, b = pos.length / 3 // il piano girato verso la strada
+        pos.push(t.wx - dx, t.wy - H / 2, t.wz - dz, t.wx + dx, t.wy - H / 2, t.wz + dz, t.wx + dx, t.wy + H / 2, t.wz + dz, t.wx - dx, t.wy + H / 2, t.wz - dz)
         const u0 = cx / 2048, u1 = (cx + CW) / 2048, v0 = 1 - (cy + CH) / 1920, v1 = 1 - cy / 1920
         uv.push(u0, v0, u1, v0, u1, v1, u0, v1); ind.push(b, b + 1, b + 2, b, b + 2, b + 3)
       })
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(ind)
       const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = 4
-      const cm = new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false }); cartMat.push(cm); scena.add(new THREE.Mesh(geo, cm))
+      scena.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide })))
     }
   }
 
@@ -579,25 +708,16 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false })); sp.center.set((4 + box / 2) / 420, 0.5)
       const k = 0.11 + 0.1 * imp; sp.scale.set(420 * k, 92 * k, 1); return sp }
+    // ogni parola è scritta per terra sul suo incrocio, grande quanto pesa: i corsi che ne partono sono le sue relazioni
     lista.forEach((P, i) => {
-      const imp = 1 - i / lista.length, x = X(P.x), z = Z(P.y), y = altezza(x, z) + 90 + P.generale * 170 + imp * 40
-      const sp = etichettaVett(P, imp); sp.position.set(x, y, z); sp.renderOrder = 6; scena.add(sp)
-      sp.userData = { tipo: 'parola', P }; cliccabili.push(sp); P.mesh = sp; P.base = new THREE.Vector3(x, y, z)
+      const imp = 1 - i / lista.length, U = URB.parole.get(P.w); if (!U) return
+      const [x, z] = URB.nodoXZ(U.n), sc = scritta(P.w, 5 + imp * 7, '#f1ece2', 600); sc.rotation.set(-Math.PI / 2, 0, 0); sc.position.set(x, 0.3, z); sc.renderOrder = 4; scena.add(sc)
+      const anello = new THREE.Mesh(new THREE.RingGeometry(9 + imp * 4, 9.8 + imp * 4, 48), new THREE.MeshBasicMaterial({ color: 0xf1ece2, transparent: true, opacity: 0.5, depthWrite: false })); anello.rotation.x = -Math.PI / 2; anello.position.set(x, 0.25, z); scena.add(anello)
+      sc.userData = { tipo: 'parola', P }; cliccabili.push(sc); P.mesh = sc; P.base = new THREE.Vector3(x, 0, z)
     })
-    // la rete: ogni punto verso i suoi due vicini più simili, con la freccia (similitudine delle distribuzioni sulle aree)
-    const sim = (A, B) => { let s = 0, a = 0, b = 0; for (let k = 0; k < NQ; k++) { s += A.dist[k] * B.dist[k]; a += A.dist[k] ** 2; b += B.dist[k] ** 2 } return s / (Math.sqrt(a * b) || 1) }
-    const lin = []
-    const perNome = new Map(lista.map(P => [P.w, P]))
-    for (const A of lista) for (const [B, sv] of (KP ? (A.vicini ?? []).map(w => [perNome.get(w), 1]).filter(x => x[0]) : lista.filter(B => B !== A).map(B => [B, sim(A, B)]).sort((a, b) => b[1] - a[1]).slice(0, 2))) {
-      if (sv < 0.15) continue
-      const a = A.base, b = B.base, dir = b.clone().sub(a), L = dir.length(); if (L < 1) continue; dir.normalize()
-      const fine = b.clone().addScaledVector(dir, -6), lato = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(2.2)
-      lin.push(a.x, a.y, a.z, fine.x, fine.y, fine.z)
-      const p1 = fine.clone().addScaledVector(dir, -4).add(lato), p2 = fine.clone().addScaledVector(dir, -4).sub(lato)
-      lin.push(fine.x, fine.y, fine.z, p1.x, p1.y, p1.z, fine.x, fine.y, fine.z, p2.x, p2.y, p2.z)
-    }
-    const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3))
-    scena.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ color: 0xf0f4fa, transparent: true, opacity: 0.22, depthWrite: false })))
+    // i nomi dei corsi: le due parole che legano
+    for (const R of URB.relazioni.slice().sort((a, b) => b.peso - a.peso)) { const n = R.via[Math.floor(R.via.length / 2)], m = R.via[Math.floor(R.via.length / 2) - 1] ?? n, [ax, az] = URB.nodoXZ(n), [bx, bz] = URB.nodoXZ(m)
+      etichetta(`<div class="s" style="font-style:italic;opacity:.8">corso «${esc(R.A)}» e «${esc(R.B)}»</div>`, new THREE.Vector3((ax + bx) / 2, 3, (az + bz) / 2), 520) }
   }
 
   // ── i legami tra le tavole: scie sottili di luce, e lucine che ci corrono sopra (azzurre e ambra) ─────────────────
@@ -613,7 +733,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       corse.push({ pts, t: Math.random(), v: 0.05 + Math.random() * 0.08, c })
     }
     const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3)); gl.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
-    scena.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false })))
+    scena.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ visible: false, vertexColors: true, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }))) // i legami ora sono le strade
     const pos = new Float32Array(corse.length * 3), cc = new Float32Array(corse.length * 3); corse.forEach((q, i) => cc.set([q.c.r, q.c.g, q.c.b], i * 3))
     const gp = new THREE.BufferGeometry(); gp.setAttribute('position', new THREE.BufferAttribute(pos, 3)); gp.setAttribute('color', new THREE.BufferAttribute(cc, 3))
     var lucine = new THREE.Points(gp, new THREE.PointsMaterial({ visible: false, size: 14, map: glow, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: false })); scena.add(lucine)
@@ -654,9 +774,18 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     const COL = { corso: 0x4a4641, via: 0x37342f, sentiero: 0x3d3328 }, ALT = { corso: 0.09, via: 0.07, sentiero: 0.05 }
     const geo = { corso: [], via: [], sentiero: [] }, cordoli = []
     const quad = (arr, x0, z0, x1, z1, y) => arr.push(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z0, x1, y, z1, x0, y, z1)
-    for (const s of URB.strade) { const h = s.largo / 2, [ax, az] = s.a, [bx, bz] = s.b, x0 = Math.min(ax, bx) - (s.oriz ? h : h), x1 = Math.max(ax, bx) + h, z0 = Math.min(az, bz) - h, z1 = Math.max(az, bz) + h
+    if (URB.forma === 'griglia') for (const s of URB.strade) { const h = s.largo / 2, [ax, az] = s.a, [bx, bz] = s.b, x0 = Math.min(ax, bx) - (s.oriz ? h : h), x1 = Math.max(ax, bx) + h, z0 = Math.min(az, bz) - h, z1 = Math.max(az, bz) + h
       quad(geo[s.rango], x0, z0, x1, z1, ALT[s.rango])
       if (s.rango !== 'sentiero') { const y = ALT[s.rango] + 0.02; if (s.oriz) cordoli.push(x0, y, z0, x1, y, z0, x0, y, z1, x1, y, z1); else cordoli.push(x0, y, z0, x0, y, z1, x1, y, z0, x1, y, z1) } }
+    else { // la muffa: tubi a nastro lungo le curve, tondi a ogni giuntura, gonfi agli incroci
+      const disco = (arr, q, r, y, n = 12) => { for (let i = 0; i < n; i++) { const a0 = i / n * 6.2832, a1 = (i + 1) / n * 6.2832; arr.push(q[0], y, q[1], q[0] + Math.cos(a0) * r, y, q[1] + Math.sin(a0) * r, q[0] + Math.cos(a1) * r, y, q[1] + Math.sin(a1) * r) } }
+      const nodi = new Map(), RANGO = { sentiero: 0, via: 1, corso: 2 }
+      for (const s of URB.strade) { const h = s.largo / 2, y = ALT[s.rango], P = s.vis
+        for (let i = 1; i < P.length; i++) { const a = P[i - 1], b = P[i], ex = b[0] - a[0], ez = b[1] - a[1], l = Math.hypot(ex, ez) || 1, nx = -ez / l * h, nz = ex / l * h
+          geo[s.rango].push(a[0] + nx, y, a[1] + nz, b[0] + nx, y, b[1] + nz, b[0] - nx, y, b[1] - nz, a[0] + nx, y, a[1] + nz, b[0] - nx, y, b[1] - nz, a[0] - nx, y, a[1] - nz) }
+        for (const q of P) disco(geo[s.rango], q, h, y, 10)
+        if (!s.pedu) for (const n of [s.n, s.m]) { const v = nodi.get(n); if (!v || RANGO[s.rango] > RANGO[v.rango] || s.largo > v.largo) nodi.set(n, { rango: s.rango, largo: Math.max(s.largo, v?.largo ?? 0) }) } }
+      for (const [n, v] of nodi) if (URB.inRete.has(n)) disco(geo[v.rango], URB.nodoXZ(n), v.largo * 0.85, ALT[v.rango] + 0.005, 20) }
     for (const r of ['sentiero', 'via', 'corso']) { if (!geo[r].length) continue; const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(geo[r], 3)); gg.computeVertexNormals()
       const m = new THREE.Mesh(gg, new THREE.MeshStandardMaterial({ color: COL[r], roughness: 0.95, side: THREE.DoubleSide })); m.receiveShadow = true; scena.add(m) }
     { const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(cordoli, 3)); scena.add(new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: 0x8d867c, transparent: true, opacity: 0.55 }))) }
@@ -664,11 +793,8 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     const LP = URB.lotti.get('piazza'); if (LP) { const cv = document.createElement('canvas'); cv.width = cv.height = 512; const g = cv.getContext('2d'); g.fillStyle = '#4b4741'; g.fillRect(0, 0, 512, 512)
       for (let y = 0; y < 512; y += 16) for (let x = (y / 16) % 2 ? 8 : 0; x < 512; x += 24) { g.fillStyle = `rgba(${200 + (x * 7 + y * 3) % 40},${190 + (x * 5) % 30},${170 + (y * 11) % 30},${0.05 + ((x * 13 + y * 7) % 9) / 90})`; g.fillRect(x + 1, y + 1, 22, 14) }
       g.strokeStyle = 'rgba(230,222,206,.22)'; g.lineWidth = 3; g.strokeRect(24, 24, 464, 464); g.beginPath(); g.arc(256, 256, 120, 0, 7); g.stroke()
-      const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; const m = new THREE.Mesh(new THREE.PlaneGeometry(LP.lx - 4, LP.lz - 4), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.9 })); m.rotation.x = -Math.PI / 2; m.position.set(LP.x, 0.12, LP.z); m.receiveShadow = true; scena.add(m) }
-    // i nomi: ogni corso dritto (tratti allineati di fila) prende uno dei nomi che gli abitanti hanno dato alle strade
-    const nomi = [...new Set(Object.values(K.nomiVie ?? {}))], corsi = URB.strade.filter(s => s.rango === 'corso'), visti = new Set(), file = []
-    for (const s of corsi) { if (visti.has(s)) continue; const fila = [s]; visti.add(s); for (let cambia = true; cambia;) { cambia = false; for (const q of corsi) if (!visti.has(q) && q.oriz === s.oriz && (s.oriz ? q.a[1] === s.a[1] : q.a[0] === s.a[0]) && fila.some(f => f.n === q.n || f.n === q.m || f.m === q.n || f.m === q.m)) { fila.push(q); visti.add(q); cambia = true } } file.push(fila) }
-    file.sort((a, b) => b.length - a.length).slice(0, nomi.length).forEach((fila, k) => { const s = fila[Math.floor(fila.length / 2)], x = (s.a[0] + s.b[0]) / 2, z = (s.a[1] + s.b[1]) / 2; etichetta(`<div class="s" style="font-style:italic;opacity:.8">${esc(nomi[k])}</div>`, new THREE.Vector3(x, 3, z), 900) })
+      const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; const m = new THREE.Mesh(URB.forma === 'muffa' ? new THREE.CircleGeometry(LP.r, 64) : new THREE.PlaneGeometry(LP.lx - 4, LP.lz - 4), new THREE.MeshStandardMaterial({ map: tx, roughness: 0.9 })); m.rotation.x = -Math.PI / 2; m.position.set(LP.x, 0.12, LP.z); m.receiveShadow = true; scena.add(m) }
+    // (i nomi dei corsi sono le relazioni tra le parole, scritti più sotto)
   }
 
   // ── gli abitanti: le figure di Porto Vecchio, vestite coi capi del guardaroba, che camminano per le strade ────
@@ -820,7 +946,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     else if (B?.porta) { const n = URB.nodoVicino(p.g.position.x, p.g.position.z); if (n != null) pts.push(URB.nodoXZ(n)); pts.push(B.porta.p) }
     pts.push([posto.x, posto.z]); return pts }
   // a spasso: da un angolo all'altro della rete lì vicino
-  const spasso = p => { const ang = [...URB.inRete].filter(n => { const [x, z] = URB.nodoXZ(n); return Math.hypot(x - p.g.position.x, z - p.g.position.z) < 320 }); const n = ang[Math.floor(p.rr() * ang.length)]; return n == null ? null : [URB.nodoXZ(n)] }
+  const spasso = p => { const ang = [...URB.inRete].filter(n => { const [x, z] = URB.nodoXZ(n); return Math.hypot(x - p.g.position.x, z - p.g.position.z) < 320 }); const n = ang[Math.floor(p.rr() * ang.length)], n0 = URB.nodoVicino(p.g.position.x, p.g.position.z); return n == null ? null : (n0 != null && URB.traNodi ? URB.traNodi(n0, n) : [URB.nodoXZ(n)]) }
   try {
     await Promise.all(['Casual', 'Casual_2', 'Casual_Hoodie', 'Formal', 'Worker'].map(f => Models.loadChar(f)))
     for (const a of D.abitanti) {
