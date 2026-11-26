@@ -48,7 +48,28 @@
   const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, -6000, 6000)
   const inquadra = () => { const a = innerWidth / innerHeight, h = O.dist / 2; cam.left = -h * a; cam.right = h * a; cam.top = h; cam.bottom = -h; cam.updateProjectionMatrix() }
   addEventListener('resize', () => { R.setSize(innerWidth, innerHeight); inquadra() })
-  scena.add(new THREE.HemisphereLight(0xc8d2e0, 0x2a2622, 0.35))
+  // la luce di Porto Vecchio (DIREZIONE_ARTISTICA §4): un momento per ora, l'ombra sempre colorata dal cielo, mai nera.
+  // Il cielo dell'ora riempie le ombre (oltremare e lilla di giorno, magenta-viola la sera, blu profondo la notte).
+  const emi = new THREE.HemisphereLight(0x9cc4f2, 0xad9c84, 0.5); scena.add(emi)
+  const MOMENTI = [ // ora, sole, ×, cielo, ×, terra, nebbia, cielo alto, fascia
+    [7, 0xffd9a2, 1.36, 0x9cc4f2, 0.50, 0xad9c84, 0xe2dfd8, 0x3a5fc8, 0xf2c6b8],
+    [15, 0xffdca8, 1.38, 0x9ec6f2, 0.48, 0xb09c82, 0xe4e0d8, 0x2a4cb8, 0xe8d4c8],
+    [19.5, 0xffb47a, 1.0, 0x9a88c8, 0.60, 0xa8826a, 0xd8a0ac, 0x1f2f7a, 0xff8fa8],
+    [23, 0x9ab0e0, 0.34, 0x2a3360, 0.40, 0x2a2230, 0x141a2c, 0x0d1430, 0x3a2a5a],
+    [31, 0xffd9a2, 1.36, 0x9cc4f2, 0.50, 0xad9c84, 0xe2dfd8, 0x3a5fc8, 0xf2c6b8]]
+  const cA = new THREE.Color(), cB = new THREE.Color(), mix3 = (a, b, t, out) => out.copy(cA.set(a)).lerp(cB.set(b), t)
+  const nebbia = new THREE.Color(), cieloAlto = new THREE.Color(), fascia = new THREE.Color()
+  const cv0 = document.createElement('canvas'); cv0.width = 2; cv0.height = 256; const g0 = cv0.getContext('2d'), cieloTx = new THREE.CanvasTexture(cv0); cieloTx.encoding = THREE.sRGBEncoding
+  let ultimaLuce = -1
+  function luce(h) {
+    const hh = h < 7 ? h + 24 : h; let i = 0; while (i < MOMENTI.length - 2 && hh > MOMENTI[i + 1][0]) i++
+    const A = MOMENTI[i], B = MOMENTI[i + 1], t = Math.max(0, Math.min(1, (hh - A[0]) / (B[0] - A[0]))), e = t * t * (3 - 2 * t)
+    mix3(A[1], B[1], e, sole.color); sole.intensity = A[2] + (B[2] - A[2]) * e
+    mix3(A[3], B[3], e, emi.color); emi.intensity = A[4] + (B[4] - A[4]) * e; mix3(A[5], B[5], e, emi.groundColor)
+    mix3(A[6], B[6], e, nebbia); mix3(A[7], B[7], e, cieloAlto); mix3(A[8], B[8], e, fascia)
+    const an = (hh - 6) / 24 * Math.PI * 2; sole.position.set(-Math.cos(an) * 900, 300 + Math.max(0.15, Math.sin(an * 0.5 + 0.3)) * 1000, 500)
+    if (Math.abs(hh - ultimaLuce) > 0.05) { ultimaLuce = hh; const gr = g0.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#' + cieloAlto.getHexString()); gr.addColorStop(0.62, '#' + cieloAlto.clone().lerp(fascia, 0.35).getHexString()); gr.addColorStop(0.82, '#' + fascia.getHexString()); gr.addColorStop(1, '#' + nebbia.getHexString()); g0.fillStyle = gr; g0.fillRect(0, 0, 2, 256); cieloTx.needsUpdate = true }
+  }
   const sole = new THREE.DirectionalLight(0xfff0dc, 0.95); sole.position.set(-700, 1100, 500); sole.castShadow = true
   sole.shadow.mapSize.set(2048, 2048); Object.assign(sole.shadow.camera, { left: -700, right: 700, top: 700, bottom: -700, near: 10, far: 3000 }); sole.shadow.bias = -0.0006; scena.add(sole)
 
@@ -133,24 +154,51 @@
     // la carta: il suolo infinito, chiaro, che sfuma attorno allo sguardo
     const AMPIO = LATO + 2400, geo = new THREE.PlaneGeometry(AMPIO, AMPIO, 360, 360); geo.rotateX(-Math.PI / 2)
     const pos = geo.attributes.position; for (let i = 0; i < pos.count; i++) pos.setY(i, altezza(pos.getX(i), pos.getZ(i))); geo.computeVertexNormals()
-    const mat = new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.35, metalness: 0.2, transparent: true, opacity: 0.62, depthWrite: false })
+    const mat = new THREE.MeshStandardMaterial({ color: 0x2f8a22, roughness: 0.92, metalness: 0 })
     var occhio = { value: new THREE.Vector3() }
     var geoTex = null
     { const cv = document.createElement('canvas'), N = Math.max(1, GL); cv.width = cv.height = N; const g = cv.getContext('2d'), im = g.createImageData(N, N)
       if (GL) for (let i = 0; i < N * N; i++) { im.data[i * 4] = GEO.cont[i] ? 0 : 255; im.data[i * 4 + 1] = Math.min(255, GEO.spinta[i] * 2.55); im.data[i * 4 + 2] = Math.min(255, GEO.fosse[i] * 2.55); im.data[i * 4 + 3] = 255 }
       g.putImageData(im, 0, 0); geoTex = new THREE.CanvasTexture(cv); geoTex.magFilter = THREE.LinearFilter }
     mat.onBeforeCompile = sh => {
-      sh.uniforms.occhio = occhio; sh.uniforms.geo = { value: geoTex }
+      sh.uniforms.occhio = occhio; sh.uniforms.geo = { value: geoTex }; sh.uniforms.nebbia = { value: nebbia }
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvMondo = (modelMatrix*vec4(position,1.)).xyz;')
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo;').replace('#include <color_fragment>', `#include <color_fragment>
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 nebbia;
+        // il prato di Porto Vecchio (render.js, prato9): fili, ciuffi, fughe fredde, punte calde, chiazze secche
+        float ph9(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float pn9(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3. - 2.*f); return mix(mix(ph9(i), ph9(i + vec2(1., 0.)), f.x), mix(ph9(i + vec2(0., 1.)), ph9(i + 1.), f.x), f.y); }
+        vec3 prato9(vec3 base, vec2 p){
+          vec2 fw = fwidth(p); float mpp = max(fw.x, fw.y);
+          float aa = 1. - smoothstep(.025, .07, mpp), aa2 = 1. - smoothstep(.04, .12, mpp);
+          float cl = pn9(p * 1.9) * .6 + pn9(p * 4.6 + 3.) * .4, zo = pn9(p * .21 + 11.), dryN = pn9(p * .55 + 31.);
+          vec2 a = mat2(.96, .28, -.28, .96) * p, b = mat2(.93, -.37, .37, .93) * p;
+          float s1 = pn9(a * vec2(19., 4.2)), s2 = pn9(b * vec2(29., 6.) + 5.), s3 = pn9(p * vec2(9., 2.4) + 17.);
+          float bl = smoothstep(.55, .9, max(s1, s2 * .97)), gap = smoothstep(.32, .06, min(s1, s2));
+          float tuft = smoothstep(.6, .85, s3) * smoothstep(.45, .7, cl);
+          float k = .86 + (cl - .5) * .42 + (zo - .5) * .3;
+          vec3 c = base * (k + (bl * .5 - gap * .38) * aa + tuft * .22 * aa2);
+          c = mix(c, c * vec3(1.1, 1.07, .78), clamp(bl * aa * .55 + tuft * aa2 * .3, 0., 1.));
+          c = mix(c, c * vec3(.8, .94, 1.12), gap * aa * .6);
+          float dry = smoothstep(.7, .88, dryN) * (1. - tuft);
+          c = mix(c, vec3(dot(c, vec3(.3, .59, .11))) * vec3(1.2, 1.15, .8), dry * .25);
+          return c; }
+        float fbm9(vec2 p){ return pn9(p) * .55 + pn9(p * 2.1 + 7.) * .28 + pn9(p * 4.3 + 13.) * .17; }`).replace('#include <color_fragment>', `#include <color_fragment>
         vec2 gu = vec2((vMondo.x/${S.toFixed(3)}+${cxT.toFixed(2)})/1000., (vMondo.z/${S.toFixed(3)}+${cyT.toFixed(2)})/1000.); vec3 g = texture2D(geo, gu).rgb * step(0., gu.x)*step(gu.x,1.)*step(0.,gu.y)*step(gu.y,1.);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.025,.04,.065), g.r*.85); diffuseColor.rgb += vec3(.05,.045,.04)*g.g + vec3(.0,.01,.03)*g.b;
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.07,.15,.08), .45 + .5*smoothstep(3., 26., vMondo.y));`)
+        vec2 pm = vMondo.xz * .45;
+        // il verde onirico: un verde pieno che vira al giallo sulle creste e al blu-verde nelle valli
+        vec3 verde = mix(vec3(.05,.30,.07), vec3(.20,.55,.10), smoothstep(1., 24., vMondo.y)) * (.9 + .2 * fbm9(vMondo.xz * .012));
+        vec3 prato = prato9(verde, pm);
+        // la terra rosa che esce da sotto il prato: chiazze morbide dove l'erba si apre, con l'orlo sfrangiato dai fili
+        float n = fbm9(vMondo.xz * .009 + 3.) + (g.r - .5) * .12, orlo = (pn9(pm * 3.) - .5) * .08;
+        float terra = smoothstep(.69, .77, n + orlo) * (1. - smoothstep(14., 26., vMondo.y));
+        vec3 rosa = vec3(.80,.40,.44) * (.85 + .3 * pn9(pm * .7)) * mix(vec3(1.), vec3(1.05,.9,.95), pn9(pm * 6.));
+        diffuseColor.rgb = mix(prato, rosa, terra);`)
         .replace('#include <fog_fragment>', `#include <fog_fragment>
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(.035,.038,.045), smoothstep(occhio.z * .45, occhio.z * 1.25, length(vMondo.xz - occhio.xy)));`)
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, pow(nebbia, vec3(2.2)), smoothstep(occhio.z * .9, occhio.z * 2.2, length(vMondo.xz - occhio.xy)));`)
     }
     const terra = new THREE.Mesh(geo, mat); terra.receiveShadow = true; scena.add(terra)
-    scena.background = new THREE.Color(0x090a0c)
+    scena.background = cieloTx
   }
   // i fondi delle aree: lo shader che il curatore ha composto (o raccolto), steso dentro il lotto dell'area
   const fondiVivi = []
@@ -161,7 +209,7 @@
       let corpo = F.codice.replace(/#version[^\n]*\n/g, '').replace(/\bgl_FragCoord\b/g, 'vec4(vU*u_resolution,0.,1.)').replace(/void\s+main\s*\(\s*\)/, 'void fondo_main()')
       if (/mainImage\s*\(/.test(corpo)) corpo = corpo.replace(/void\s+fondo_main\s*\(\s*\)/, 'void fondo_main_x()') + '\nvoid fondo_main(){ vec4 c=vec4(0.); mainImage(c, vU*u_resolution); gl_FragColor=vec4(c.rgb,1.); }'
       const testa = `precision highp float;\nuniform float u_time; uniform vec2 u_resolution; uniform float u_seed; uniform sampler2D maschera; varying vec2 vU; varying vec2 vM;\n${/mainImage/.test(corpo) ? '#define iTime u_time\n#define iResolution vec3(u_resolution,1.)\n' : ''}`
-      const frag = testa + corpo + '\nvoid main(){ fondo_main(); gl_FragColor.rgb *= .16; gl_FragColor.a = texture2D(maschera, vM).r * .9; }'
+      const frag = testa + corpo + '\nvoid main(){ fondo_main(); gl_FragColor.a = texture2D(maschera, vM).r * .3; }'
       if (!prova(frag)) return
       // la toppa copre solo dove la maschera dell'area c'è
       let i0 = GN, i1 = 0, j0 = GN, j1 = 0; const M = maschere[k]; for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) if (M[j * GN + i] > 8) { i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j) }
@@ -197,7 +245,7 @@
   const texDi = new Map(), texture = id => { if (!texDi.has(id)) texDi.set(id, new Promise(ok => carica.load(`img/${id}.jpg`, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; ok(t) }, undefined, () => ok(null)))); return texDi.get(id) }
   const tavolaMatDa = url => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); carica.load(url, t => { t.encoding = THREE.sRGBEncoding; m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
   const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
-  const materialeRiflesso = (id, alto, H) => { const mat = new THREE.ShaderMaterial({ uniforms: { mappa: { value: null } }, transparent: true, depthWrite: false,
+  const materialeRiflesso = (id, alto, H) => { if (true) return new THREE.MeshBasicMaterial({ visible: false }); const mat = new THREE.ShaderMaterial({ uniforms: { mappa: { value: null } }, transparent: true, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
     fragmentShader: `uniform sampler2D mappa; varying vec2 vUv; void main(){ vec3 c = vec3(0.); for (int i=-2;i<=2;i++) for (int j=-2;j<=2;j++) c += texture2D(mappa, vUv + vec2(float(i),float(j))*.012).rgb; c /= 25.; float f = smoothstep(0., 1., vUv.y) * ${(0.7 * Math.max(0.25, 1 - alto / 140)).toFixed(3)}; gl_FragColor = vec4(c, f); }` })
     texture(id).then(t => { mat.uniforms.mappa.value = t }); return mat }
@@ -308,7 +356,32 @@
     const m = new THREE.Mesh(new THREE.PlaneGeometry(alto * cv.width / cv.height, alto), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide })); m.userData.largo = alto * cv.width / cv.height; return m
   }
   const ologrammi = []
-  for (const c of costr.filter(c => c.tipo === 'intervento' && c.stato !== 'tolto')) {
+  // i gesti per terra: ognuno col suo strumento (la mano del generatore) e il suo filtro, steso sul prato
+  const gestoTela = d => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 192; const g = cv.getContext('2d'); let h = 0; for (const ch of (d.gesto ?? '') + d.strumento) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+    const rr = () => ((h = (h * 1664525 + 1013904223) >>> 0) / 4294967296), col = d.colore ?? '#e3361b', due = ['#1b1b1b', '#e8e2d6', '#ff8fa8', '#3b6fd8'][h % 4]
+    g.translate(96, 96); const st = d.strumento ?? 'materia'
+    if (/albero|semina/.test(st)) { g.strokeStyle = col; const ramo = (x, y, a, l, n) => { const x2 = x + Math.cos(a) * l, y2 = y + Math.sin(a) * l; g.lineWidth = n; g.beginPath(); g.moveTo(x, y); g.lineTo(x2, y2); g.stroke(); if (n > 1) { ramo(x2, y2, a - 0.4 - rr() * 0.4, l * 0.72, n - 1); ramo(x2, y2, a + 0.4 + rr() * 0.4, l * 0.72, n - 1) } }; for (let k = 0; k < 5; k++) ramo(0, 0, k * 1.256, 26, 6) }
+    else if (/muffa|cristallo/.test(st)) { for (let k = 0; k < 160; k++) { const a = rr() * 6.28, d0 = Math.sqrt(rr()) * 86; g.fillStyle = k % 3 ? col : due; g.globalAlpha = 0.7; if (/cristallo/.test(st)) { g.save(); g.translate(Math.cos(a) * d0, Math.sin(a) * d0); g.rotate(a); g.fillRect(-3, -9, 6, 18); g.restore() } else { g.beginPath(); g.arc(Math.cos(a) * d0, Math.sin(a) * d0, 2 + rr() * 7, 0, 7); g.fill() } } }
+    else if (/acqua|universo|fotocosmo|shader|metashader/.test(st)) { const gr = g.createRadialGradient(0, 0, 4, 0, 0, 92); gr.addColorStop(0, col); gr.addColorStop(0.6, due); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 92, 0, 7); g.fill(); g.fillStyle = '#fff'; for (let k = 0; k < 60; k++) g.fillRect((rr() - 0.5) * 150, (rr() - 0.5) * 150, 1.5, 1.5) }
+    else if (/pattern|ripeti|grana|ricetta/.test(st)) { g.fillStyle = col; for (let y = -90; y < 90; y += 10) for (let x = -90; x < 90; x += 10) if (Math.hypot(x, y) < 88) { g.beginPath(); g.arc(x, y, 1 + 3.5 * (0.5 + 0.5 * Math.sin(x * 0.07 + y * 0.05)), 0, 7); g.fill() } }
+    else if (/geometria|taglia|togli|schiaccia/.test(st)) { g.strokeStyle = col; g.lineWidth = 5; for (let k = 1; k < 7; k++) { g.rotate(0.12); g.strokeRect(-k * 13, -k * 13, k * 26, k * 26) } }
+    else if (/traccia|scrivi/.test(st) || !d.strumento) { g.fillStyle = col; g.font = '700 30px Inter, sans-serif'; g.textAlign = 'center'; g.fillText(d.parola ?? '', 0, 10); g.strokeStyle = due; g.lineWidth = 3; g.beginPath(); for (let k = 0; k < 40; k++) g.lineTo(Math.cos(k * 0.5) * (40 + k), Math.sin(k * 0.5) * (40 + k) * 0.6); g.stroke() }
+    else { for (let k = 0; k < 9; k++) { g.fillStyle = k % 2 ? col : due; g.globalAlpha = 0.8; g.beginPath(); g.ellipse((rr() - 0.5) * 100, (rr() - 0.5) * 100, 14 + rr() * 40, 10 + rr() * 26, rr() * 3, 0, 7); g.fill() } }
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1
+    // il filtro, a modo suo
+    const f = d.filtro ?? ''
+    if (/Risograph|Halftone|Dither/.test(f)) { const im = g.getImageData(0, 0, 192, 192); for (let y = 0; y < 192; y++) for (let x = 0; x < 192; x++) { const i = (y * 192 + x) * 4; if (((x >> 2) + (y >> 2)) % 2) im.data[i + 3] *= 0.45 } g.putImageData(im, 0, 0) }
+    else if (/Glitch|VHS|Wavy|Liquid/.test(f)) { for (let k = 0; k < 14; k++) { const y = Math.floor(rr() * 180), hh = 2 + rr() * 8; g.drawImage(cv, 0, y, 192, hh, (rr() - 0.5) * 24, y, 192, hh) } }
+    else if (/Pixelate|ASCII|Posterize/.test(f)) { const t = document.createElement('canvas'); t.width = t.height = 24; t.getContext('2d').drawImage(cv, 0, 0, 24, 24); g.clearRect(0, 0, 192, 192); g.imageSmoothingEnabled = false; g.drawImage(t, 0, 0, 192, 192) }
+    else if (/Neon|Bloom|Holographic|Prism/.test(f)) { g.globalCompositeOperation = 'lighter'; g.filter = 'blur(6px)'; g.drawImage(cv, 0, 0); g.filter = 'none'; g.globalCompositeOperation = 'source-over' }
+    const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; return tx }
+  for (const c of costr.filter(c => c.tipo === 'intervento' && c.nome === 'suolo' && c.stato !== 'tolto' && c.pos?.x != null).slice(-120)) {
+    const d = c.dati ?? {}, x = X(c.pos.x), z = Z(c.pos.y), lato = 14 + (c.id.length % 5) * 3
+    const m = new THREE.Mesh(toppa(x - lato / 2, z - lato / 2, lato, lato, 0.35, 16), new THREE.MeshBasicMaterial({ map: gestoTela(d), transparent: true, depthWrite: false }))
+    m.geometry.attributes.uv && m.geometry.computeBoundingBox(); m.renderOrder = 2; scena.add(m)
+  }
+  for (const c of costr.filter(c => c.tipo === 'intervento' && c.nome !== 'suolo' && c.stato !== 'tolto')) {
     const R = sale.find(s => s.c.id === c.a), d = c.dati ?? {}; if (!R) continue
     const base = meshDi.get(d.su ?? d.tavola), chi = nomeDi(c.chi)
     if (d.tipo === 'rilievo') { const p = posDi.get(d.tavola); if (!p?.img) continue; const m = rilievo(p.id, 22, 27.5, 6); m.rotation.x = -Math.PI / 2; m.rotation.z = R.verso; const [x, z] = R.aMondo(0, R.piano[1] / 2 + 22); m.position.set(x, altezza(x, z) + 1.5, z); scena.add(m); m.userData = { tipo: 'tavola', p, nota: `Sollevata in rilievo da ${chi}.` }; cliccabili.push(m) }
@@ -339,21 +412,27 @@
       vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }', fragmentShader: frag })
     fondiVivi.push(mat); return mat
   }
+  // una macchia di colore con l'orlo irregolare, come pigmento soffiato: mai un rettangolo
+  const macchiaTx = (col, seme) => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d'); let h = 0; for (const ch of String(seme)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; const rr = () => ((h = (h * 1664525 + 1013904223) >>> 0) / 4294967296)
+    for (let k = 0; k < 22; k++) { const x = 64 + (rr() - 0.5) * 70, y = 64 + (rr() - 0.5) * 70, rad = 14 + rr() * 30, gr = g.createRadialGradient(x, y, 0, x, y, rad); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.globalAlpha = 0.35; g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill() }
+    const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; return tx }
   for (const c of costr.filter(c => c.tipo === 'piano' && c.stato !== 'tolto')) {
     const R = sale.find(s => s.c.id === c.a), d = c.dati ?? {}; if (!R) continue
     if (d.contenuto === 'cornici') { for (const id of d.tavole ?? []) { const t = meshDi.get(id); if (t?.cornice) t.cornice.material = new THREE.MeshBasicMaterial({ color: new THREE.Color(d.colore ?? '#e3361b') }) } continue }
     const lz = d.avanti === 1 ? R.piano[1] * 0.5 + 6 : d.avanti === -1 ? -R.piano[1] * 0.5 - 6 : 0, [x, z] = R.aMondo(0, lz), y = R.centro.y + (d.quota ?? 30)
-    const L = d.largo ?? 60, H = d.alto ?? 40, g = pianoSmussato(L, H, Math.min(L, H) * 0.18)
+    const L = d.largo ?? 60, H = d.alto ?? 40, g = new THREE.PlaneGeometry(L, H)
     let mat
+    // niente lastre di vetro: il piano è solo il gesto che ci sta sopra (uno strumento, una macchia di colore, una parola, una tavola)
+    if (d.contenuto === 'parola') { if (!d.parola) continue; const sc = scritta(d.parola, 7, '#f1ece2', 600), o2 = new THREE.Group(); o2.position.set(x, y, z); o2.rotation.y = R.verso; o2.add(sc); scena.add(o2); continue }
+    if (d.strumento && (d.contenuto === 'colore' || d.contenuto === 'motivo')) { mat = new THREE.MeshBasicMaterial({ map: gestoTela(d), transparent: true, side: THREE.DoubleSide, depthWrite: false }) }
+    else if (d.contenuto === 'colore') { mat = new THREE.MeshBasicMaterial({ map: macchiaTx(d.colore ?? '#ff8fa8', c.id), transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }) }
     if (d.contenuto === 'motivo' && d.tessuto) { mat = tavolaMatDa(`tessuti/${d.tessuto}.jpg`); mat.transparent = true; mat.opacity = Math.max(0.55, d.opacita ?? 0.4); mat.depthWrite = false } // tessuto con un generatore vero
     else if (d.contenuto === 'motivo') { mat = R.q?.sala?.suolo?.codice ? motivo(R.q.sala.suolo.codice) : null; if (mat) mat.uniforms.opacita.value = d.opacita ?? 0.4 }
     else if (d.contenuto === 'tavola') { const p = posDi.get(d.tavola); if (p?.img) { mat = tavolaMat(p.id); mat.transparent = true; mat.opacity = d.opacita ?? 0.6; mat.depthWrite = false } }
-    if (!mat) mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(d.colore ?? '#ebe6dc'), transparent: true, opacity: d.opacita ?? 0.15, side: THREE.DoubleSide, depthWrite: false })
+    if (!mat) mat = new THREE.MeshBasicMaterial({ map: macchiaTx(d.colore ?? '#ff8fa8', c.id), transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false })
     const m = new THREE.Mesh(g, mat), ordine = new THREE.Group(); ordine.position.set(x, y, z)
     if (d.verso === 'orizzontale') { m.rotation.x = -Math.PI / 2; ordine.rotation.y = R.verso } else ordine.rotation.y = R.verso
     ordine.add(m)
-    const orlo = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: 0xe8e2d6, transparent: true, opacity: 0.25 })); orlo.rotation.copy(m.rotation); ordine.add(orlo)
-    if (d.contenuto === 'parola' && d.parola) { const sc = scritta(d.parola, 7, '#f1ece2', 600); sc.position.z = 0.3; ordine.add(sc) }
     m.renderOrder = 3; scena.add(ordine)
     if (d.contenuto === 'tavola') { m.userData = { tipo: 'tavola', p: posDi.get(d.tavola), nota: `Sospesa su un piano da ${nomeDi(c.chi)}.` }; cliccabili.push(m) }
   }
@@ -419,7 +498,7 @@
     for (const [a, b, n] of VI.vie.slice().sort((x, y) => y[2] - x[2]).slice(0, 70)) { const A = LG.get(a)?.v, B = LG.get(b)?.v; if (!A || !B || n < 3) continue
       const k = Math.log(1 + n) / Math.log(1 + vmax), M = A.clone().lerp(B, 0.5), off = new THREE.Vector3(-(B.z - A.z), 0, B.x - A.x).normalize().multiplyScalar(A.distanceTo(B) * 0.08 * (((a.length + b.length) % 3) - 1))
       M.add(off); const pts = new THREE.QuadraticBezierCurve3(A, M, B).getPoints(16)
-      for (let t = 0; t < pts.length - 1; t++) { const P = pts[t], Q = pts[t + 1]; P.y = altezza(P.x, P.z) + 0.25; Q.y = altezza(Q.x, Q.z) + 0.25; vg.push(P.x, P.y, P.z, Q.x, Q.y, Q.z); const c = 0.18 + 0.55 * k; vc.push(c, c * 0.93, c * 0.82, c, c * 0.93, c * 0.82) } }
+      for (let t = 0; t < pts.length - 1; t++) { const P = pts[t], Q = pts[t + 1]; P.y = altezza(P.x, P.z) + 0.25; Q.y = altezza(Q.x, Q.z) + 0.25; vg.push(P.x, P.y, P.z, Q.x, Q.y, Q.z); const c = 0.55 + 0.4 * k; vc.push(c, c * 0.82, c * 0.5, c, c * 0.82, c * 0.5) } }
     const gv = new THREE.BufferGeometry(); gv.setAttribute('position', new THREE.Float32BufferAttribute(vg, 3)); gv.setAttribute('color', new THREE.Float32BufferAttribute(vc, 3))
     scena.add(new THREE.LineSegments(gv, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false })))
     // le cose lasciate: ognuna nel suo modo, grande quanto è stata ripetuta
@@ -503,6 +582,7 @@
     return schedaAbitante0(a) + `<div class="meta" style="margin-top:14px">adesso, ore ${h}</div><p>${esc(ora ? ora.fa : '')}${ora?.con?.length ? `, con ${ora.con.map(nomeDi).map(esc).join(', ')}` : ''}.</p>`
       + (v.pensiero ? `<p style="opacity:.8"><i>${esc(v.pensiero)}</i></p>` : '')
       + `<div class="meta">i bisogni</div>${Object.entries(v.bisogni).map(([k, x]) => barra(k, x)).join('')}`
+      + (v.saperi ? `<div class="meta" style="margin-top:12px">cosa sa</div>${Object.entries(v.saperi).map(([k, x]) => barra(k, x)).join('')}` : '')
       + `<div class="meta" style="margin-top:12px">gli piacciono</div><p>${v.interessi.map(esc).join(', ')}</p>`
       + (v.amici.length ? `<div class="meta">amici</div><p>${v.amici.map(nomeDi).map(esc).join(', ')}</p>` : '') + (v.rivali.length ? `<div class="meta">non si prendono</div><p>${v.rivali.map(nomeDi).map(esc).join(', ')}</p>` : '')
       + (v.progetti.length ? `<div class="meta">progetti</div>${v.progetti.map(p => `<div class="riga">${esc(p.label)} <span style="opacity:.5">${esc(p.stato)} · ${p.passo}</span></div>`).join('')}` : '')
@@ -555,7 +635,7 @@
     const ora = performance.now(), dt = Math.min(0.05, (ora - prima) / 1000); prima = ora
     if (volo) { const k = Math.min(1, (ora - volo.t0) / 1500), e = k * k * (3 - 2 * k); O.t.lerpVectors(volo.da.t, volo.a.t, e); O.dist = volo.da.dist + (volo.a.dist - volo.da.dist) * e; O.pitch = volo.da.pitch + (volo.a.pitch - volo.da.pitch) * e; O.yaw = volo.da.yaw + (volo.a.yaw - volo.da.yaw) * e; if (k >= 1) volo = null }
     metti()
-    { const h = oraCitta(); OR.el.textContent = `ore ${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')} · giornata ${D.giorno ?? ''}`
+    { const h = oraCitta(); luce(h); OR.el.textContent = `ore ${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')} · giornata ${D.giorno ?? ''}`
       for (const p of gente) {
         const meta = p.posOra(h), d = meta.clone().sub(p.g.position).setY(0), dist = d.length(), o = p.ore[Math.floor(h) % 24]
         let speed = 0, anim = null
