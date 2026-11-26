@@ -45,6 +45,10 @@
   R.setPixelRatio(Math.min(2, devicePixelRatio)); R.setSize(innerWidth, innerHeight); R.outputEncoding = THREE.sRGBEncoding
   R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.0; R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap
   const scena = new THREE.Scene(); scena.fog = null
+  // la luce a fasce di Porto Vecchio (render.js [fumetto], ricetta minima): due gradini netti nella luce diretta, un po' di blu nell'ombra
+  { const DNL = 'float dotNL = saturate( dot( geometry.normal, directLight.direction ) );', C = THREE.ShaderChunk
+    if (C.lights_physical_pars_fragment.includes(DNL) && !C.lights_physical_pars_fragment.includes("float cw = .02")) C.lights_physical_pars_fragment = C.lights_physical_pars_fragment.replace(DNL, DNL + `{ float cw = .02; dotNL = .45*smoothstep(.03-cw,.03+cw,dotNL) + .55*smoothstep(.34-cw,.34+cw,dotNL); }`)
+    if (!C.lights_fragment_end.includes('vec3(.06,.06,.11)')) C.lights_fragment_end += `\nreflectedLight.indirectDiffuse += diffuseColor.rgb*vec3(.06,.06,.11);` }
   // l'inquadratura assonometrica: una camera ortografica, a 45° sul piano e 35° dall'alto, come un disegno di progetto
   const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, -6000, 6000)
   const inquadra = () => { const a = innerWidth / innerHeight, h = O.dist / 2; cam.left = -h * a; cam.right = h * a; cam.top = h; cam.bottom = -h; cam.updateProjectionMatrix() }
@@ -458,7 +462,6 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       g.fillStyle = '#fff'; g.beginPath(); g.arc(4 + box / 2, 46, 3.5, 0, 7); g.fill()
       g.font = `500 ${fs}px JetBrains Mono, monospace`; g.fillStyle = 'rgba(240,244,250,.95)'; g.textBaseline = 'alphabetic'
       g.fillText(P.w, box + 14, 40); g.font = `400 ${fs * 0.7}px JetBrains Mono, monospace`; g.fillStyle = 'rgba(240,244,250,.6)'
-      g.fillText(`x: ${Math.round(P.x)}  y: ${Math.round(P.y)}  z: ${P.generale.toFixed(2)}`, box + 14, 70)
       const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false })); sp.center.set((4 + box / 2) / 420, 0.5)
       const k = 0.11 + 0.1 * imp; sp.scale.set(420 * k, 92 * k, 1); return sp }
@@ -538,7 +541,8 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   // guardaroba, fontana, orto, le case, i confini, le strade), le vie che consumano camminando, e quello che lasciano.
   const VI = D.vita, LG = new Map(), W = l => { const x = X(l.x), z = Z(l.y); return new THREE.Vector3(x, altezza(x, z), z) }
   const LUOGHI = {}
-  if (VI) for (const l of VI.luoghi) { const v = W(l); LG.set(l.id, { l, v }); LUOGHI[l.id] = v
+  const COMUNI_T = new Set(['mensa', 'biblioteca', 'bottega', 'officina', 'osservatorio', 'archivio', 'assemblea', 'guardaroba', 'fontana', 'giardino'])
+  if (VI) for (const l of VI.luoghi) { let v = W(l); if (COMUNI_T.has(l.tipo)) { v = PZ.clone().add(v.clone().sub(PZ).setY(0).multiplyScalar(1.8)); v.y = altezza(v.x, v.z) } LG.set(l.id, { l, v }); LUOGHI[l.id] = v
     if (!['casa', 'strada', 'sala'].includes(l.tipo)) etichetta(`<div class="s" style="letter-spacing:.12em;text-transform:uppercase;opacity:.7">${esc(l.nome)}</div>`, v.clone().add(new THREE.Vector3(0, 10, 0)), l.tipo === 'confine' ? 420 : 900, 'luogo') }
   else Object.assign(LUOGHI, { piazza: PZ.clone() })
   // ── gli arredi: ogni luogo è solo i suoi elementi, posati su una griglia appena accennata. Niente stanze, tetti o muri:
@@ -583,12 +587,52 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       confine: g => { tappeto(g, 20, 14, RUG.confine); panca(g, -3, 3, 0, 10); cavalletto(g, 6, -3) },
       strada: g => { muro(g, 0, 0) },
     }
+    // gli interni veri di Porto Vecchio (interiors.js R e V, interni_arte.js prop): le stesse stanze, ma senza pareti né tetto.
+    // Le cose «contro il muro» stanno sul bordo del rettangolo e guardano dentro; i gruppi (@) portano i loro posti; * al centro;
+    // ~ per terra; le cose appese (^) restano nel gioco. La stanza emerge dalla disposizione. 1 m = M unità del mondo.
+    const M = 4.5, STANZE = { mensa: ['mensa_t', 'sala_trattoria'], biblioteca: ['lettura', 'scaffali'], bottega: ['tipografia', 'atelier'], officina: ['officina', 'laboratorio'],
+      osservatorio: ['stanza_radio', 'lanterna'], archivio: ['archivio', 'schedario'], assemblea: ['salone_cultura', 'sala_riunioni'], guardaroba: ['negozio_vestiti', 'camerini'], casa: ['camera'], confine: ['atelier'], piazza: ['circolo', 'sala_bar'] }
+    const PVI = window.Interior, IA = window.InterniArte
+    const KITRE = { bedDouble: 'ia_letto_design', bedSingle: 'ia_letto_singolo_design', loungeSofa: 'ia_divano_design', loungeSofaLong: 'ia_divano_design', tableCoffee: 'ia_tavolino_design', table: 'ia_tavolo_design', tableCloth: 'ia_tavolo_design', kitchenFridge: 'ia_frigo_design', pottedPlant: 'ia_pianta_alta', plantSmall1: 'ia_pianta_alta', coatRackStanding: 'ia_attaccapanni_design', bathtub: 'ia_vasca_design', cabinetTelevision: 'ia_mobile_tv', lampRoundFloor: 'ia_lampada_piede', rugRound: 'ia_tappeto_tondo', rugRectangle: 'ia_tappeto_design', chairCushion: 'chair', kitchenCabinetDrawer: 'kitchenCabinet' }
+    const rngPV = seed => { let z = seed >>> 0; return () => { z = (z + 0x6D2B79F5) >>> 0; let t = z; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296 } }
+    const pezzo = (id, r) => { if (!IA) return null; try { return IA.prop(KITRE[id] || id, r, {}) } catch (_) { return null } }
+    const stanza = (chiavi, seme) => {
+      const r = rngPV(seme), g = new THREE.Group(), W = 9, D = 7, occ = []
+      const libero = (x, z, w, d) => !occ.some(o => Math.abs(o.x - x) < (o.w + w) / 2 + 0.04 && Math.abs(o.z - z) < (o.d + d) / 2 + 0.04) && Math.abs(x) + w / 2 <= W / 2 + 0.01 && Math.abs(z) + d / 2 <= D / 2 + 0.01
+      const metti = (id, x, z, ry, h = 0) => { const m = pezzo(id, r); if (!m) return false; m.position.set(x, h, z); m.rotation.y = ry; g.add(m); return true }
+      const sz = id => { const q = PVI?.SZ?.[KITRE[id] || id] ?? PVI?.SZ?.[id] ?? [0.8, 0.6]; return [q[0], q[1]] }
+      // i bordi: quattro muri immaginari, ognuno con il suo cursore
+      const MURI = [{ ry: 0, at: t => [t, -D / 2], L: W }, { ry: Math.PI, at: t => [-t, D / 2], L: W }, { ry: Math.PI / 2, at: t => [-W / 2, -t], L: D }, { ry: -Math.PI / 2, at: t => [W / 2, t], L: D }]
+      const cursori = MURI.map(m => -m.L / 2 + 0.85)
+      const alMuro = (w, d, fn) => { for (let k = 0; k < 8; k++) { const mi = k % 4, Mu = MURI[mi], t = cursori[mi] + w / 2; if (t + w / 2 > Mu.L / 2 - 0.3) continue
+          const [px, pz] = Mu.at(t), nx = Math.round(Math.sin(Mu.ry)), nz = Math.round(Math.cos(Mu.ry)), cx = px + nx * d / 2, cz = pz + nz * d / 2, ww = Math.abs(nz) ? w : d, dd = Math.abs(nz) ? d : w
+          if (!libero(cx, cz, ww, dd)) { cursori[mi] += 0.5; continue } occ.push({ x: cx, z: cz, w: ww, d: dd }); cursori[mi] = t + w / 2 + 0.04; fn(px, pz, Mu.ry, nx, nz); return true } return false }
+      const alCentro = (w, d, fn) => { for (let k = 0; k < 24; k++) { const x = (r() - 0.5) * (W - w - 1.6), z = (r() - 0.5) * (D - d - 1.6); if (!libero(x, z, w, d)) continue; occ.push({ x, z, w, d }); fn(x, z); return true } return false }
+      const gruppo = (nome, aMuro) => { const Vg = PVI?.V?.[nome]; if (!Vg) return; const [gw, gd, voci] = Vg
+        const posa = (ox, oz, ry) => { const c = Math.cos(ry), s0 = Math.sin(ry); for (const [id0, lx, ly, lr, h] of voci) { let id = id0; if (id.startsWith(':')) continue; if (id.startsWith('?')) { if (r() > 0.45) continue; id = id.slice(1) } metti(id, ox + lx * c + ly * s0, oz - lx * s0 + ly * c, ry + (lr || 0), h || 0) } }
+        if (aMuro) alMuro(gw, gd, (px, pz, ry) => posa(px, pz, ry)); else alCentro(gw, gd, (x, z) => posa(x - gw / 2 * 0, z - gd / 2, 0)) }
+      const scegli = tok => { if (tok.startsWith('%')) { const l = tok.slice(1).split('|'); return pick0(l) } return tok.split('|')[0] }
+      const pick0 = l => l[Math.floor(r() * l.length)]
+      const toks = chiavi.flatMap(k => (PVI?.R?.[k]?.[3] ?? [])).sort((a, b) => (b.startsWith('!') ? 1 : 0) - (a.startsWith('!') ? 1 : 0))
+      for (let tok of toks) {
+        tok = tok.replace(/^!/, ''); if (tok.startsWith('??')) { if (r() > 0.33) continue; tok = tok.slice(2) } else if (tok.startsWith('?')) { if (r() > 0.45) continue; tok = tok.slice(1) }
+        if (tok.startsWith('^')) continue
+        let modo = 'muro'; if (tok.startsWith('*')) { modo = 'centro'; tok = tok.slice(1) } else if (tok.startsWith('~')) { modo = 'terra'; tok = tok.slice(1) }
+        tok = scegli(tok)
+        if (tok.startsWith('@')) { gruppo(tok.slice(1), modo === 'muro'); continue }
+        const [w, d] = sz(tok)
+        if (modo === 'muro') alMuro(w, d, (px, pz, ry, nx, nz) => metti(tok, px + nx * d / 2, pz + nz * d / 2, ry))
+        else alCentro(w, d, (x, z) => metti(tok, x, z, modo === 'terra' ? r() * 6.28 : Math.round(r() * 4) * Math.PI / 2))
+      }
+      g.scale.setScalar(M); return g }
     for (const { l, v } of LG.values()) {
-      const f = COMPONI[l.tipo] ?? (l.id.startsWith('piazzetta') ? COMPONI.confine : null); if (!f) continue
-      const g = new THREE.Group(); f(g); if (l.tipo !== 'casa' && l.tipo !== 'strada') griglia(g, l.tipo === 'piazza' ? 64 : 48)
-      g.position.copy(v); g.rotation.y = Math.round(Math.atan2(PZ.x - v.x, PZ.z - v.z) / (Math.PI / 2)) * (Math.PI / 2) // allineati alla piazza, ad angolo retto
+      const chiavi = STANZE[l.tipo] ?? (l.id.startsWith('piazzetta') ? ['atelier'] : null)
+      let g = null
+      if (chiavi && PVI && IA) { g = stanza(chiavi, [...l.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)); griglia(g, 11) }
+      else { const f = COMPONI[l.tipo]; if (!f) continue; g = new THREE.Group(); f(g); if (l.tipo !== 'strada') griglia(g, l.tipo === 'piazza' ? 64 : 48) }
+      g.position.copy(v); g.rotation.y = Math.round(Math.atan2(PZ.x - v.x, PZ.z - v.z) / (Math.PI / 2)) * (Math.PI / 2)
       scena.add(g)
-    }
+  }
   }
   if (VI) {
     // le vie: dove passano spesso diventano sentieri chiari, tanto più larghi quanto più battuti (desideri, non progetti)
@@ -644,7 +688,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     for (const a of D.abitanti) {
       const Dp = Personaggi.descrittore({ fem: !!a.fem }, null, { id: a.id }, a.vesti?.length ? a.vesti : undefined)
       const g = Personaggi.figura(Dp, null); if (!g) continue
-      g.scale.setScalar(9); g.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material && 'emissive' in o.material) { o.material = o.material.clone(); o.material.emissive = o.material.color.clone().multiplyScalar(0.45) } } }); scena.add(g)
+      g.scale.setScalar(4.5); g.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material && 'emissive' in o.material) { o.material = o.material.clone(); o.material.emissive = o.material.color.clone().multiplyScalar(0.45) } } }); scena.add(g)
       const ore = VI?.ab?.[a.id]?.oggi ?? [], rr = caso, scarto = new THREE.Vector3((rr() - 0.5) * 9, 0, (rr() - 0.5) * 9)
       const posOra = h => { const o = ore[Math.floor(h) % 24]; const v = o ? (LUOGHI[o.luogo]?.clone() ?? W(o)) : PZ.clone(); v.add(scarto); v.y = altezza(v.x, v.z); return v }
       g.position.copy(posOra(oraCitta()))
