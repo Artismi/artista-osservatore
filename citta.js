@@ -26,7 +26,7 @@
     const sposta = o => { if (!o || o.x == null) return; const [dx, dy] = campoSp(o.x, o.y); o.x += dx; o.y += dy }
     for (const p of D.punti) { const d = del.get(p.q); if (!d) { sposta(p); continue } const c = d[2]; p.x = c.x + (p.x - c.x0) * 0.6; p.y = c.y + (p.y - c.y0) * 0.6 }
     for (const q of Qs) { const d = del.get(q.id); if (d) { q.x += d[0]; q.y += d[1] } }
-    sposta(D.piazza)
+    sposta(D.piazza); for (const w of Object.values(D.costruito?.parole ?? {})) sposta(w)
     for (const c of D.costruito?.costruzioni ?? []) if (c.pos?.x != null) { const d = del.get(c.q); if (d) { c.pos.x += d[0]; c.pos.y += d[1] } else sposta(c.pos) }
     if (D.vita) { for (const l of D.vita.luoghi) { const d = l.q != null && l.tipo === 'sala' ? del.get(l.q) : null; if (d) { l.x += d[0]; l.y += d[1] } else sposta(l) } for (const t of D.vita.tracce) sposta(t)
       for (const v of Object.values(D.vita.ab)) for (const o of v.oggi ?? []) sposta(o) }
@@ -251,7 +251,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   const etichetta = (html, p, lontano, cls = '') => { const el = document.createElement('div'); el.className = 'et ' + cls; el.innerHTML = html; strato.appendChild(el); const e = { el, p, lontano }; etichette.push(e); return e }
   const texDi = new Map(), texture = id => { if (!texDi.has(id)) texDi.set(id, new Promise(ok => carica.load(`img/${id}.jpg`, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; ok(t) }, undefined, () => ok(null)))); return texDi.get(id) }
   const tavolaMatDa = url => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); carica.load(url, t => { t.encoding = THREE.sRGBEncoding; m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
-  const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
+  const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); m.userData.tavola = true; texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xd8d8d8); m.needsUpdate = true }); return m }
   const materialeRiflesso = (id, alto, H) => { if (true) return new THREE.MeshBasicMaterial({ visible: false }); const mat = new THREE.ShaderMaterial({ uniforms: { mappa: { value: null } }, transparent: true, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
     fragmentShader: `uniform sampler2D mappa; varying vec2 vUv; void main(){ vec3 c = vec3(0.); for (int i=-2;i<=2;i++) for (int j=-2;j<=2;j++) c += texture2D(mappa, vUv + vec2(float(i),float(j))*.012).rgb; c /= 25.; float f = smoothstep(0., 1., vUv.y) * ${(0.7 * Math.max(0.25, 1 - alto / 140)).toFixed(3)}; gl_FragColor = vec4(c, f); }` })
@@ -302,7 +302,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
         const lx = P.o[0] + P.lungo[0] * u, lz = P.o[1] + P.lungo[1] * u, [x, z] = aMondo(lx, lz), y = cy + 30 + v
         const m = new THREE.Mesh(new THREE.PlaneGeometry(W, H), tavolaMat(p.id)); m.rotation.y = verso(P.d[0], P.d[1]) + (p.voce?.gira ?? 0); m.position.set(x, y, z)
         // la lightbox: una cornice bianca che fa luce, e dietro il buio
-        const cornice = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), new THREE.MeshBasicMaterial({ color: 0xf2f4ff })); cornice.position.copy(m.position); cornice.rotation.copy(m.rotation); cornice.translateZ(-0.12); scena.add(cornice)
+        const cornice = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), new THREE.MeshBasicMaterial({ color: 0xc9ccd6 })); cornice.position.copy(m.position); cornice.rotation.copy(m.rotation); cornice.translateZ(-0.12); scena.add(cornice)
         const retro = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), new THREE.MeshBasicMaterial({ color: 0x101114 })); retro.position.copy(m.position); retro.rotation.copy(m.rotation); retro.translateZ(-0.25); retro.rotateY(Math.PI); scena.add(retro)
         // il riflesso sul pavimento lucido: la tavola capovolta sotto terra, sfocata e che svanisce
         const rif = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, H + 1.4), materialeRiflesso(p.id, y - cy, H)); rif.position.set(x, cy - (y - cy), z); rif.rotation.copy(m.rotation); rif.scale.y = -1; rif.renderOrder = -1; scena.add(rif)
@@ -444,30 +444,72 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     if (d.contenuto === 'tavola') { m.userData = { tipo: 'tavola', p: posDi.get(d.tavola), nota: `Sospesa su un piano da ${nomeDi(c.chi)}.` }; cliccabili.push(m) }
   }
 
-  // ── le parole: i concetti, in aria. Grandi quanto contano, più in alto quanto più legano aree diverse; uno spillo le
-  // lega al suolo, i fili nell'aria le legano tra loro (quanto condividono le stesse aree). ──────────────────────
+  // ── le parole: un database vettoriale nello spazio. Ogni concetto è un punto alla sua posizione (dove stanno le tavole
+  // che lo nominano, più in alto quanto più lega aree diverse), dentro il suo riquadro con le coordinate, come un oggetto
+  // tracciato; una rete di frecce sottili lo lega ai vicini più simili. ─────────────────────────────────────────────
   const scritte = []
   {
-    const lista = [...parole.values()].sort((a, b) => b.tot - a.tot).slice(0, 30), taglie = [14, 9, 6, 5]
+    const KP = K.parole && Object.keys(K.parole).length ? K.parole : null
+    const lista = KP ? Object.entries(KP).map(([w, q]) => { const base = parole.get(w) ?? { dist: new Float32Array(NQ), tot: 0 }; return { w, dist: base.dist, tot: base.tot, x: q.x, y: q.y, generale: q.z, vicini: q.vicini ?? [], chi: q.chi, peso: (q.vett ?? []).reduce((a, b) => a + b, 0) } }).sort((a, b) => b.peso - a.peso) : [...parole.values()].sort((a, b) => b.tot - a.tot).slice(0, 48)
+    const etichettaVett = (P, imp) => {
+      const cv = document.createElement('canvas'), g = cv.getContext('2d'), fs = 26; cv.width = 420; cv.height = 92
+      g.strokeStyle = 'rgba(240,244,250,.95)'; g.lineWidth = 2; const box = 22 + imp * 20; g.strokeRect(4, 46 - box / 2, box, box)
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(4 + box / 2, 46, 3.5, 0, 7); g.fill()
+      g.font = `500 ${fs}px JetBrains Mono, monospace`; g.fillStyle = 'rgba(240,244,250,.95)'; g.textBaseline = 'alphabetic'
+      g.fillText(P.w, box + 14, 40); g.font = `400 ${fs * 0.7}px JetBrains Mono, monospace`; g.fillStyle = 'rgba(240,244,250,.6)'
+      g.fillText(`x: ${Math.round(P.x)}  y: ${Math.round(P.y)}  z: ${P.generale.toFixed(2)}`, box + 14, 70)
+      const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false })); sp.center.set((4 + box / 2) / 420, 0.5)
+      const k = 0.11 + 0.1 * imp; sp.scale.set(420 * k, 92 * k, 1); return sp }
     lista.forEach((P, i) => {
-      const cl = i < 6 ? 0 : i < 14 ? 1 : 2, alto = taglie[cl], x = X(P.x), z = Z(P.y), y = altezza(x, z) + 115 + P.generale * 160 + (2 - cl) * 20
-      const m = scritta(P.w, alto, cl === 0 ? '#f1ece2' : '#cfc9be', cl < 2 ? 600 : 500); m.position.set(x, y, z); m.renderOrder = 5; scena.add(m)
-      m.userData = { tipo: 'parola', P, cl }; cliccabili.push(m); scritte.push(m); P.mesh = m; P.base = new THREE.Vector3(x, y - alto / 2 - 1, z)
-      const spillo = new THREE.BufferGeometry().setFromPoints([P.base, new THREE.Vector3(x, altezza(x, z) + 0.6, z)])
-      if (cl < 2) scena.add(new THREE.Line(spillo, new THREE.LineBasicMaterial({ color: 0xe8e2d6, transparent: true, opacity: cl ? 0.12 : 0.22 })))
+      const imp = 1 - i / lista.length, x = X(P.x), z = Z(P.y), y = altezza(x, z) + 90 + P.generale * 170 + imp * 40
+      const sp = etichettaVett(P, imp); sp.position.set(x, y, z); sp.renderOrder = 6; scena.add(sp)
+      sp.userData = { tipo: 'parola', P }; cliccabili.push(sp); P.mesh = sp; P.base = new THREE.Vector3(x, y, z)
     })
-    // i fili tra le parole: quanto si somigliano le loro distribuzioni sulle aree
+    // la rete: ogni punto verso i suoi due vicini più simili, con la freccia (similitudine delle distribuzioni sulle aree)
     const sim = (A, B) => { let s = 0, a = 0, b = 0; for (let k = 0; k < NQ; k++) { s += A.dist[k] * B.dist[k]; a += A.dist[k] ** 2; b += B.dist[k] ** 2 } return s / (Math.sqrt(a * b) || 1) }
-    const fatti = new Set()
-    for (const A of lista) {
-      const vicini = lista.filter(B => B !== A).map(B => [B, sim(A, B)]).filter(([, s]) => s > 0.2).sort((a, b) => b[1] - a[1]).slice(0, 3)
-      for (const [B, s] of vicini) {
-        const k = [A.w, B.w].sort().join('|'); if (fatti.has(k)) continue; fatti.add(k)
-        const M = A.base.clone().lerp(B.base, 0.5); M.y += A.base.distanceTo(B.base) * 0.12
-        const g = new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(A.base, M, B.base).getPoints(32))
-        scena.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: s > 0.75 ? 0xe3361b : 0xe8e2d6, transparent: true, opacity: 0.06 + 0.25 * s })))
-      }
+    const lin = []
+    const perNome = new Map(lista.map(P => [P.w, P]))
+    for (const A of lista) for (const [B, sv] of (KP ? (A.vicini ?? []).map(w => [perNome.get(w), 1]).filter(x => x[0]) : lista.filter(B => B !== A).map(B => [B, sim(A, B)]).sort((a, b) => b[1] - a[1]).slice(0, 2))) {
+      if (sv < 0.15) continue
+      const a = A.base, b = B.base, dir = b.clone().sub(a), L = dir.length(); if (L < 1) continue; dir.normalize()
+      const fine = b.clone().addScaledVector(dir, -6), lato = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(2.2)
+      lin.push(a.x, a.y, a.z, fine.x, fine.y, fine.z)
+      const p1 = fine.clone().addScaledVector(dir, -4).add(lato), p2 = fine.clone().addScaledVector(dir, -4).sub(lato)
+      lin.push(fine.x, fine.y, fine.z, p1.x, p1.y, p1.z, fine.x, fine.y, fine.z, p2.x, p2.y, p2.z)
     }
+    const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3))
+    scena.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ color: 0xf0f4fa, transparent: true, opacity: 0.55, depthWrite: false })))
+  }
+
+  // ── i legami tra le tavole: scie sottili di luce, e lucine che ci corrono sopra (azzurre e ambra) ─────────────────
+  const corse = []
+  {
+    const glow = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv) })()
+    const coppie = (D.fili ?? []).filter(([a, b]) => meshDi.has(D.punti[a]?.id) && meshDi.has(D.punti[b]?.id)).sort((x, y) => y[2] - x[2]).slice(0, 140)
+    const lin = [], col = [], COL = [new THREE.Color(0x8fd0ff), new THREE.Color(0xffb46a)]
+    for (const [a, b, w] of coppie) {
+      const A = meshDi.get(D.punti[a].id).m.position, B = meshDi.get(D.punti[b].id).m.position, M = A.clone().lerp(B, 0.5); M.y = Math.min(A.y, B.y) - 6 - A.distanceTo(B) * 0.08
+      const pts = new THREE.QuadraticBezierCurve3(A.clone(), M, B.clone()).getPoints(24), c = COL[(a + b) % 2]
+      for (let k = 0; k < pts.length - 1; k++) { lin.push(pts[k].x, pts[k].y, pts[k].z, pts[k + 1].x, pts[k + 1].y, pts[k + 1].z); col.push(c.r, c.g, c.b, c.r, c.g, c.b) }
+      corse.push({ pts, t: Math.random(), v: 0.05 + Math.random() * 0.08, c })
+    }
+    const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(lin, 3)); gl.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+    scena.add(new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false })))
+    const pos = new Float32Array(corse.length * 3), cc = new Float32Array(corse.length * 3); corse.forEach((q, i) => cc.set([q.c.r, q.c.g, q.c.b], i * 3))
+    const gp = new THREE.BufferGeometry(); gp.setAttribute('position', new THREE.BufferAttribute(pos, 3)); gp.setAttribute('color', new THREE.BufferAttribute(cc, 3))
+    var lucine = new THREE.Points(gp, new THREE.PointsMaterial({ size: 14, map: glow, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: false })); scena.add(lucine)
+    var muoviLucine = dt => { const P = lucine.geometry.attributes.position; corse.forEach((q, i) => { q.t = (q.t + q.v * dt) % 1; const f = q.t * (q.pts.length - 1), k = Math.floor(f), u = f - k, A = q.pts[k], B = q.pts[Math.min(k + 1, q.pts.length - 1)]; P.setXYZ(i, A.x + (B.x - A.x) * u, A.y + (B.y - A.y) * u, A.z + (B.z - A.z) * u) }); P.needsUpdate = true }
+  }
+
+  // ── le tavole colorano il prato sotto di sé: la loro luce cade per terra, morbida ───────────────────────────────
+  const macchieSotto = []
+  {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, '#fff'); gr.addColorStop(1, '#000'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const alfa = new THREE.CanvasTexture(cv)
+    for (const [, o] of meshDi) { if (!o.m.material?.isMeshBasicMaterial) continue
+      const W = (o.w ?? 10) * 1.9, x = o.m.position.x, z = o.m.position.z
+      const mm = new THREE.MeshBasicMaterial({ alphaMap: alfa, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x000000 })
+      mm.userData.pieno = true; const d = new THREE.Mesh(toppa(x - W / 2, z - W / 2, W, W, 0.3, 6), mm); d.renderOrder = 2; scena.add(d); macchieSotto.push({ d, src: o.m.material }) }
   }
 
   // i graffiti: una tavola di un altro quartiere stesa di notte vicino alla sala, appena storta
@@ -573,7 +615,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     const aree = [...P.dist].map((v, k) => [QS[k], v / P.tot]).filter(x => x[1] > 0.04).sort((a, b) => b[1] - a[1])
     const r = radiceP(P.w), tav = D.punti.filter(p => (p.t ?? '').toLowerCase().includes(r)).sort((a, b) => b.i - a.i).slice(0, 8)
     const note = D.annotazioni.filter(n => n.testo.toLowerCase().includes(r)).slice(0, 4)
-    return `<div class="meta">parola · ${P.tot} tavole la nominano</div><h2>${esc(P.w)}</h2><p>${aree.length > 1 ? `Sta tra ${aree.slice(0, 3).map(([q, s]) => `«${esc(q.nome)}» (${Math.round(s * 100)}%)`).join(', ')}: per questo è ${P.generale > 0.5 ? 'alta, sopra più aree' : 'sul loro confine'}.` : `È di «${esc(aree[0]?.[0]?.nome ?? '')}».`}</p>${note.length ? `<div class="meta" style="margin-top:14px">cosa ne dicono</div>${note.map(n => `<div class="riga"><b>${esc(nomeDi(n.chi))}</b> ${esc(n.testo)}</div>`).join('')}` : ''}<div class="meta" style="margin-top:14px">le tavole</div>${tav.map(p => `<div class="riga"><a href="giorni/${p.g}.html#${p.id}">${esc(p.t || 'tavola')}</a> <span style="opacity:.5">giorno ${p.g}</span></div>`).join('')}`
+    return `<div class="meta">parola · ${P.tot} tavole la nominano</div><h2>${esc(P.w)}</h2>${P.vicini?.length ? `<p>Vicini nello spazio (i più simili): ${P.vicini.map(w => `«${esc(w)}»`).join(', ')}.${P.chi ? ` L'ultimo a ritoccare la disposizione: ${esc(nomeDi(P.chi))}.` : ''}</p>` : ''}<p>${aree.length > 1 ? `Sta tra ${aree.slice(0, 3).map(([q, s]) => `«${esc(q.nome)}» (${Math.round(s * 100)}%)`).join(', ')}: per questo è ${P.generale > 0.5 ? 'alta, sopra più aree' : 'sul loro confine'}.` : `È di «${esc(aree[0]?.[0]?.nome ?? '')}».`}</p>${note.length ? `<div class="meta" style="margin-top:14px">cosa ne dicono</div>${note.map(n => `<div class="riga"><b>${esc(nomeDi(n.chi))}</b> ${esc(n.testo)}</div>`).join('')}` : ''}<div class="meta" style="margin-top:14px">le tavole</div>${tav.map(p => `<div class="riga"><a href="giorni/${p.g}.html#${p.id}">${esc(p.t || 'tavola')}</a> <span style="opacity:.5">giorno ${p.g}</span></div>`).join('')}`
   }
   function schedaTavola(p, extra = '') { const note = D.annotazioni.filter(a => a.tavola === p.id); return `<img src="img/${p.id}.jpg" alt=""><div class="meta">giorno ${p.g} · interesse ${Math.round((p.i ?? 0) * 100)}%</div><h2>${esc(p.t)}</h2>${D.tavole?.[p.id]?.testo ? `<p>${esc(D.tavole[p.id].testo)}…</p>` : ''}${extra}${note.length ? `<div class="meta" style="margin-top:16px">le note degli abitanti</div>${note.map(n => `<div class="riga"><b>${esc(nomeDi(n.chi))}</b> ${esc(n.testo)}</div>`).join('')}` : ''}<p><a href="giorni/${p.g}.html#${p.id}">la giornata in cui è nata →</a></p>` }
   function schedaSala(r) { const nomeCur = r.sala?.curatore ? nomeDi(r.sala.curatore) : null; const vie = strade.filter(s => s.c.a === r.c.id || s.c.b === r.c.id).map(s => K.nomiVie?.[s.c.id]).filter(Boolean); return `<div class="meta">sala · ${r.q?.n ?? 0} tavole</div><h2>${esc(r.c.nome)}</h2>${r.q ? `<p>Le tavole che parlano di ${esc((r.q.concetti ?? []).join(', '))}.</p>` : ''}${nomeCur ? `<p>La cura ${esc(nomeCur)}: ${esc(r.sala.perche || r.sala.disposizione)}.</p>` : ''}${vie.length ? `<p style="opacity:.7">Ci passano ${vie.map(esc).join(', ')}.</p>` : ''}<div class="meta" style="margin-top:14px">la sua storia</div>${(r.c.storia ?? []).map(h => `<div class="riga">giorno ${h.giorno} · ${esc(nomeDi(h.chi))} ${esc(h.cosa)}</div>`).join('')}<div class="meta" style="margin-top:14px">in sala</div>${(perQ.get(r.c.q) ?? []).sort((a, b) => b.i - a.i).slice(0, 12).map(p => `<div class="riga"><a href="giorni/${p.g}.html#${p.id}">${esc(p.t || 'tavola')}</a> <span style="opacity:.5">giorno ${p.g}</span></div>`).join('')}` }
@@ -643,15 +685,10 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   const OLO_FINE = `{
       float vic = 0.;
       for (int i = 0; i < ${MAXO}; i++) { if (i >= uNOcchi) break; vec4 o = uOcchi[i]; float d = length(vMondoG.xz - o.xy); vic = max(vic, 1. - smoothstep(o.z * .55, o.z, d)); }
-      if (uNOcchi > 0) {
-        vec2 c = fract(gl_FragCoord.xy / 3.5) - .5; float punto = 1. - smoothstep(.12, .26, length(c));
-        float lum = dot(gl_FragColor.rgb, vec3(.3, .59, .11));
-        vec3 olo = mix(vec3(.30, .55, .70), vec3(.95, .80, .85), lum) * (.55 + lum * 1.8) * punto;
-        gl_FragColor.rgb = mix(olo, gl_FragColor.rgb, vic); gl_FragColor.a = mix(max(gl_FragColor.a, .0) * (.55 + .45 * punto), gl_FragColor.a, vic);
-      }
+      if (uNOcchi > 0) { gl_FragColor.rgb *= mix(.05, 1., vic); gl_FragColor.a *= mix(.3, 1., vic); }
     }`
   const ologrammizza = m => {
-    if (!m || m.userData.__olo || m.isRawShaderMaterial || m.isLineBasicMaterial || m.isPointsMaterial) return
+    if (!m || m.userData.__olo || m.userData.tavola || m.userData.pieno || m.isSpriteMaterial || m.isRawShaderMaterial || m.isLineBasicMaterial || m.isPointsMaterial) return
     if (m.isShaderMaterial) { // i nostri shader (fondi, motivi): stessa regola, cucita a mano
       if (!/void main\s*\(\s*\)\s*\{/.test(m.fragmentShader) || !/void main\s*\(\s*\)\s*\{/.test(m.vertexShader)) return
       m.userData.__olo = true; m.uniforms.uOcchi = OCCHI; m.uniforms.uNOcchi = NOCCHI
@@ -667,7 +704,36 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     }
     const k = m.customProgramCacheKey?.bind(m); m.customProgramCacheKey = () => (k ? k() : '') + '|olo'; m.needsUpdate = true
   }
-  const figure = new Set(gente.map(p => p.g))
+  // la nuvola di punti (alla Gather): il prato campionato in punti veri sulla superficie, col suo colore, che derivano piano;
+  // si vede dove nessuno sta rendendo il mondo, e sparisce nelle bolle degli abitanti
+  let NUVOLA = null
+  {
+    const ph = (x, y) => { const v = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return v - Math.floor(v) }
+    const pn = (x, y) => { const i = Math.floor(x), j = Math.floor(y); let f = x - i, g = y - j; f = f * f * (3 - 2 * f); g = g * g * (3 - 2 * g); const a = ph(i, j), b = ph(i + 1, j), c = ph(i, j + 1), d = ph(i + 1, j + 1); return (a + (b - a) * f) + ((c + (d - c) * f) - (a + (b - a) * f)) * g }
+    const fbm = (x, y) => pn(x, y) * .55 + pn(x * 2.1 + 7, y * 2.1 + 7) * .28 + pn(x * 4.3 + 13, y * 4.3 + 13) * .17
+    const R0 = Math.max(LX, LZ) * 0.9, passo = Math.max(1.6, R0 * 2 / 620), riga = passo * 1.7, pos = [], col = [], seme = []
+    for (let z = -R0; z < R0; z += riga) { const ond = (pn(z * 0.05, 3.1) - 0.5) * riga * 2; for (let x = -R0; x < R0; x += passo * (0.7 + ph(x, z) * 0.6)) {
+      const jx = x + (ph(x, z) - 0.5) * passo * 0.5, jz = z + ond + (pn(x * 0.04, z * 0.04) - 0.5) * riga * 1.2 + (ph(z, x) - 0.5) * riga * 0.25, d = Math.hypot(jx, jz); if (d > R0 || ph(jx * 1.3, jz * 0.7) < 0.12) continue
+      const y = altezza(jx, jz); pos.push(jx, y + 0.6, jz)
+      const m1 = fbm(jx * .010, jz * .010), m2 = fbm(jx * .023 + 9, jz * .023 + 9), t = Math.min(1, Math.max(0, (y - 1) / 21))
+      let r = .30 + .22 * t, g = .62 + .16 * t, b = .30 + .06 * t
+      if (m1 > .52) { const k = Math.min(1, (m1 - .52) / .26) * .55; r += (.72 - r) * k; g += (.80 - g) * k; b += (.42 - b) * k }
+      if (m2 > .55) { const k = Math.min(1, (m2 - .55) / .27) * .35; r += (.78 - r) * k; g += (.62 - g) * k; b += (.62 - b) * k }
+      const n = fbm(jx * .009 + 3, jz * .009 + 3); if (n > .66 && y < 20) { const k = Math.min(1, (n - .66) / .14); r += (.95 - r) * k; g += (.72 - g) * k; b += (.64 - b) * k }
+      const fuori = 1 - Math.min(1, Math.max(0, (d - R0 * 0.55) / (R0 * 0.45))), lu = 0.75 + 0.5 * ph(jx * 2.7, jz * 1.9); col.push(r * fuori * lu, g * fuori * lu, b * fuori * lu); seme.push(ph(jz * 3, jx * 7))
+    } }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.setAttribute('seme', new THREE.Float32BufferAttribute(seme, 1))
+    NUVOLA = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uOcchi: OCCHI, uNOcchi: NOCCHI, uT: { value: 0 }, uPx: { value: R.getPixelRatio() } },
+      vertexShader: `attribute float seme; varying vec3 vC; varying float vA; uniform vec4 uOcchi[${MAXO}]; uniform int uNOcchi; uniform float uT; uniform float uPx;
+        void main(){ vec3 p = position; float t = uT * .35 + seme * 6.283;
+          p += vec3(sin(t) * .35, (sin(t * 1.3 + seme * 9.) * .5 + .5) * .5, cos(t * .8) * .35);       // la deriva, appena
+          float vic = 0.; for (int i = 0; i < ${MAXO}; i++) { if (i >= uNOcchi) break; vec4 o = uOcchi[i]; float d = length(p.xz - o.xy); vic = max(vic, 1. - smoothstep(o.z * .45, o.z * .95, d)); }
+          vC = color; vA = 1. - vic; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.); gl_PointSize = (.9 + seme * .9) * uPx; }`,
+      fragmentShader: `varying vec3 vC; varying float vA; void main(){ vec2 c = gl_PointCoord - .5; float r = length(c); if (r > .5) discard; gl_FragColor = vec4(vC * 1.35, vA * .9); }`,
+      vertexColors: true })
+    NUVOLA.userData.pieno = true; const pts = new THREE.Points(geo, NUVOLA); pts.renderOrder = 1; pts.frustumCulled = false; scena.add(pts)
+  }
+  const figure = new Set(gente.map(p => p.g)); for (const [, o] of meshDi) if (o.cornice?.material) o.cornice.material.userData.pieno = true
   scena.traverse(o => { let f = o; while (f) { if (figure.has(f)) return; f = f.parent } if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(ologrammizza) })
   const aggiornaOcchi = () => { let n = 0; for (const p of gente) { if (n >= MAXO || !p.g.visible) continue; const o = p.ore[Math.floor(oraCitta()) % 24], all = o && !/cammina|passeggia/.test(o.fa) ? 1 : 0.7; OCCHI.value[n++].set(p.g.position.x, p.g.position.z, (55 + 35 * all) * (O.dist > 1200 ? 1.5 : 1), 0) } NOCCHI.value = n }
 
@@ -677,7 +743,8 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     const ora = performance.now(), dt = Math.min(0.05, (ora - prima) / 1000); prima = ora
     if (volo) { const k = Math.min(1, (ora - volo.t0) / 1500), e = k * k * (3 - 2 * k); O.t.lerpVectors(volo.da.t, volo.a.t, e); O.dist = volo.da.dist + (volo.a.dist - volo.da.dist) * e; O.pitch = volo.da.pitch + (volo.a.pitch - volo.da.pitch) * e; O.yaw = volo.da.yaw + (volo.a.yaw - volo.da.yaw) * e; if (k >= 1) volo = null }
     metti()
-    aggiornaOcchi()
+    aggiornaOcchi(); if (NUVOLA) NUVOLA.uniforms.uT.value = ora / 1000; if (typeof muoviLucine === 'function') muoviLucine(dt)
+    for (const q of macchieSotto) if (!q.d.material.map && q.src.map) { q.d.material.map = q.src.map; q.d.material.color.set(0x9a9a9a); q.d.material.needsUpdate = true }
     { const h = oraCitta(); luce(h); OR.el.textContent = `ore ${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')} · giornata ${D.giorno ?? ''}`
       for (const p of gente) {
         const meta = p.posOra(h), d = meta.clone().sub(p.g.position).setY(0), dist = d.length(), o = p.ore[Math.floor(h) % 24]
