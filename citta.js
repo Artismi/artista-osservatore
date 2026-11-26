@@ -93,7 +93,12 @@
     maschere[b][c] = Math.round(255 * wb * presenza); if (s >= 0 && ws) maschere[s][c] = Math.round(255 * ws * presenza)
   }
   // il rilievo: dolce, più alto dove il sapere si accumula
-  function altezza(x, z) {
+  // la geologia di stateyour sotto la città: altezze, mari (dove la crosta non emerge), crinali (dove le placche spingono)
+  const GEO = K.geologia, GL = GEO?.lato ?? 0
+  const geoA = (x, z) => { if (!GL) return 0; const u = Math.min(GL - 1, Math.max(0, Math.floor((x / S + cxT) / 1000 * GL))), v = Math.min(GL - 1, Math.max(0, Math.floor((z / S + cyT) / 1000 * GL))); return GEO.alt[v * GL + u] }
+  function altezza(x, z) { return altezzaBase(x, z) + geoLiscia(x, z) }
+  function geoLiscia(x, z) { if (!GL) return 0; let s = 0; for (const [dx, dz] of [[0, 0], [12, 0], [-12, 0], [0, 12], [0, -12]]) s += geoA(x + dx, z + dz); return Math.max(-6, Math.min(10, s / 5 / 8000 * 14)) }
+  function altezzaBase(x, z) {
     const u = (x - GX0) / GLX * (GN - 1), v = (z - GZ0) / GLZ * (GN - 1)
     if (u < 0 || v < 0 || u > GN - 1 || v > GN - 1) return 2 + Math.sin(x * 0.01) * Math.cos(z * 0.012) * 1.5
     const i = Math.min(GN - 2, Math.floor(u)), j = Math.min(GN - 2, Math.floor(v)), fu = u - i, fv = v - j, a = (ii, jj) => tot[jj * GN + ii]
@@ -111,10 +116,16 @@
     const pos = geo.attributes.position; for (let i = 0; i < pos.count; i++) pos.setY(i, altezza(pos.getX(i), pos.getZ(i))); geo.computeVertexNormals()
     const mat = new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.35, metalness: 0.2, transparent: true, opacity: 0.62, depthWrite: false })
     var occhio = { value: new THREE.Vector3() }
+    var geoTex = null
+    { const cv = document.createElement('canvas'), N = Math.max(1, GL); cv.width = cv.height = N; const g = cv.getContext('2d'), im = g.createImageData(N, N)
+      if (GL) for (let i = 0; i < N * N; i++) { im.data[i * 4] = GEO.cont[i] ? 0 : 255; im.data[i * 4 + 1] = Math.min(255, GEO.spinta[i] * 2.55); im.data[i * 4 + 2] = Math.min(255, GEO.fosse[i] * 2.55); im.data[i * 4 + 3] = 255 }
+      g.putImageData(im, 0, 0); geoTex = new THREE.CanvasTexture(cv); geoTex.magFilter = THREE.LinearFilter }
     mat.onBeforeCompile = sh => {
-      sh.uniforms.occhio = occhio
+      sh.uniforms.occhio = occhio; sh.uniforms.geo = { value: geoTex }
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvMondo = (modelMatrix*vec4(position,1.)).xyz;')
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo; uniform vec3 occhio;')
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo;').replace('#include <color_fragment>', `#include <color_fragment>
+        vec2 gu = vec2((vMondo.x/${S.toFixed(3)}+${cxT.toFixed(2)})/1000., (vMondo.z/${S.toFixed(3)}+${cyT.toFixed(2)})/1000.); vec3 g = texture2D(geo, gu).rgb * step(0., gu.x)*step(gu.x,1.)*step(0.,gu.y)*step(gu.y,1.);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.025,.04,.065), g.r*.85); diffuseColor.rgb += vec3(.05,.045,.04)*g.g + vec3(.0,.01,.03)*g.b;`)
         .replace('#include <fog_fragment>', `#include <fog_fragment>
         gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(.035,.038,.045), smoothstep(occhio.z * .45, occhio.z * 1.25, length(vMondo.xz - occhio.xy)));`)
     }
