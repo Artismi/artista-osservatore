@@ -6,6 +6,7 @@
 (async function () {
   'use strict'
   const D = await (await fetch('citta.json', { cache: 'no-store' })).json()
+  if (D.vita?.popolo?.length) D.abitanti = [...D.abitanti, ...D.vita.popolo] // il popolo: tutti gli abitanti, non solo chi discute in piazza
   const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
   const nomeDi = id => D.abitanti.find(a => a.id === id)?.nome ?? id
   const da = n => n.replace(/^il /, 'dal ').replace(/^lo /, 'dallo ').replace(/^la /, 'dalla ').replace(/^l'/, "dall'").replace(/^chi /, 'da chi ')
@@ -204,13 +205,13 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
         .replace('#include <fog_fragment>', `#include <fog_fragment>
         float lontano = length(vMondo.xz); gl_FragColor.rgb *= 1. - smoothstep(${(Math.max(LX, LZ) * 0.5).toFixed(1)}, ${(Math.max(LX, LZ) * 0.95).toFixed(1)}, lontano); gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(.004,.005,.006), smoothstep(occhio.z * 1.4, occhio.z * 2.6, length(vMondo.xz - occhio.xy)));`)
     }
-    const terra = new THREE.Mesh(geo, mat); terra.receiveShadow = true; scena.add(terra)
+    const terra = new THREE.Mesh(geo, mat); terra.receiveShadow = true; terra.visible = false; scena.add(terra) // il prato è messo da parte: restano i luoghi, sospesi
     scena.background = new THREE.Color(0x030405) // attorno, il buio: la città è un'isola di luce
   }
   // i fondi delle aree: lo shader che il curatore ha composto (o raccolto), steso dentro il lotto dell'area
   const fondiVivi = []
   {
-    const prova = (() => { const c = document.createElement('canvas'), gl = c.getContext('webgl'); return src => { if (!gl) return true; const s = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(s, src); gl.compileShader(s); const ok = gl.getShaderParameter(s, gl.COMPILE_STATUS); gl.deleteShader(s); return ok } })()
+    const prova = (() => { const gl = (window.__glProva ??= document.createElement('canvas').getContext('webgl')); return src => { if (!gl) return true; const s = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(s, src); gl.compileShader(s); const ok = gl.getShaderParameter(s, gl.COMPILE_STATUS); gl.deleteShader(s); return ok } })()
     QS.forEach((q, k) => {
       const F = q.sala?.suolo; if (!F?.codice) return
       let corpo = F.codice.replace(/#version[^\n]*\n/g, '').replace(/\bgl_FragCoord\b/g, 'vec4(vU*u_resolution,0.,1.)').replace(/void\s+main\s*\(\s*\)/, 'void fondo_main()')
@@ -226,7 +227,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       const mat = new THREE.ShaderMaterial({ uniforms: { u_time: { value: 0 }, u_resolution: { value: new THREE.Vector2(lx * 2, lz * 2) }, u_seed: { value: k * 7.13 }, maschera: { value: tm } }, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 - k * 0.01, polygonOffsetUnits: -2,
         vertexShader: `varying vec2 vU; varying vec2 vM; void main(){ vec4 w = modelMatrix*vec4(position,1.); vU = vec2((w.x-(${x0.toFixed(2)}))/${lx.toFixed(2)}, 1.-(w.z-(${z0.toFixed(2)}))/${lz.toFixed(2)}); vM = vec2((w.x-(${GX0.toFixed(2)}))/${GLX.toFixed(2)}, (w.z-(${GZ0.toFixed(2)}))/${GLZ.toFixed(2)}); gl_Position = projectionMatrix*viewMatrix*w; }`,
         fragmentShader: frag.replace(/^precision highp float;\n/, '') })
-      const m = new THREE.Mesh(toppa(x0, z0, lx, lz, 0.25, Math.min(160, Math.max(24, Math.round(Math.max(lx, lz) / 6)))), mat); m.renderOrder = 1; scena.add(m)
+      const m = new THREE.Mesh(toppa(x0, z0, lx, lz, 0.25, Math.min(160, Math.max(24, Math.round(Math.max(lx, lz) / 6)))), mat); m.renderOrder = 1; m.visible = false; scena.add(m)
       fondiVivi.push(mat)
     })
   }
@@ -414,7 +415,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   const motivo = codice => {
     let corpo = codice.replace(/#version[^\n]*\n/g, '').replace(/\bgl_FragCoord\b/g, 'vec4(vU*u_resolution,0.,1.)').replace(/void\s+main\s*\(\s*\)/, 'void fondo_main()')
     const frag = `uniform float u_time; uniform vec2 u_resolution; uniform float u_seed; uniform float opacita; varying vec2 vU;\n${corpo}\nvoid main(){ fondo_main(); gl_FragColor.a = opacita; }`
-    const cv = document.createElement('canvas').getContext('webgl'); if (cv) { const sh = cv.createShader(cv.FRAGMENT_SHADER); cv.shaderSource(sh, 'precision highp float;\n' + frag); cv.compileShader(sh); if (!cv.getShaderParameter(sh, cv.COMPILE_STATUS)) return null }
+    const cv = (window.__glProva ??= document.createElement('canvas').getContext('webgl')); if (cv) { /* un solo contesto di prova per tutti */ const sh = cv.createShader(cv.FRAGMENT_SHADER); cv.shaderSource(sh, 'precision highp float;\n' + frag); cv.compileShader(sh); if (!cv.getShaderParameter(sh, cv.COMPILE_STATUS)) return null }
     const mat = new THREE.ShaderMaterial({ uniforms: { u_time: { value: 0 }, u_resolution: { value: new THREE.Vector2(512, 512) }, u_seed: { value: 3.1 }, opacita: { value: 0.4 } }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
       vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }', fragmentShader: frag })
     fondiVivi.push(mat); return mat
@@ -509,7 +510,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     for (const [, o] of meshDi) { if (!o.m.material?.isMeshBasicMaterial) continue
       const W = (o.w ?? 10) * 1.9, x = o.m.position.x, z = o.m.position.z
       const mm = new THREE.MeshBasicMaterial({ alphaMap: alfa, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x000000 })
-      mm.userData.pieno = true; const d = new THREE.Mesh(toppa(x - W / 2, z - W / 2, W, W, 0.3, 6), mm); d.renderOrder = 2; scena.add(d); macchieSotto.push({ d, src: o.m.material }) }
+      mm.userData.pieno = true; const d = new THREE.Mesh(toppa(x - W / 2, z - W / 2, W, W, 0.3, 6), mm); d.visible = false; d.renderOrder = 2; scena.add(d); macchieSotto.push({ d, src: o.m.material }) }
   }
 
   // i graffiti: una tavola di un altro quartiere stesa di notte vicino alla sala, appena storta
@@ -540,6 +541,55 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   if (VI) for (const l of VI.luoghi) { const v = W(l); LG.set(l.id, { l, v }); LUOGHI[l.id] = v
     if (!['casa', 'strada', 'sala'].includes(l.tipo)) etichetta(`<div class="s" style="letter-spacing:.12em;text-transform:uppercase;opacity:.7">${esc(l.nome)}</div>`, v.clone().add(new THREE.Vector3(0, 10, 0)), l.tipo === 'confine' ? 420 : 900, 'luogo') }
   else Object.assign(LUOGHI, { piazza: PZ.clone() })
+  // ── gli arredi: ogni luogo è solo i suoi elementi, posati su una griglia appena accennata. Niente stanze, tetti o muri:
+  // la stanza la si sente dalla disposizione nello spazio. Minimali, chiari, con un tappeto sotto. ─────────────────────
+  if (VI) {
+    const MB = new THREE.MeshStandardMaterial({ color: 0xe9e4da, roughness: 0.75 }), MS = new THREE.MeshStandardMaterial({ color: 0x2b2b30, roughness: 0.6 })
+    const MV = new THREE.MeshStandardMaterial({ color: 0xcfe6ff, roughness: 0.1, transparent: true, opacity: 0.25, depthWrite: false })
+    const scatola = (g, w, h, d, x, y, z, m = MB) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y + h / 2, z); o.castShadow = true; g.add(o); return o }
+    const cil = (g, r, h, x, y, z, m = MB) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 16), m); o.position.set(x, y + h / 2, z); g.add(o); return o }
+    const tav = (g, x, z, w = 12, d = 7, sedie = true) => { scatola(g, w, 0.6, d, x, 6.4, z); for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) scatola(g, 0.5, 6.4, 0.5, x + a * (w / 2 - 0.8), 0, z + b * (d / 2 - 0.8), MS)
+      if (sedie) for (let k = 0; k < Math.floor(w / 5); k++) for (const sz of [-1, 1]) sedia(g, x - w / 2 + 3 + k * 5, z + sz * (d / 2 + 2.6), sz > 0 ? Math.PI : 0) }
+    const sedia = (g, x, z, ry = 0) => { const s0 = new THREE.Group(); scatola(s0, 3.4, 0.4, 3.4, 0, 3.8, 0); scatola(s0, 3.4, 4, 0.4, 0, 4.2, -1.5); for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) scatola(s0, 0.3, 3.8, 0.3, a * 1.4, 0, b * 1.4, MS); s0.position.set(x, 0, z); s0.rotation.y = ry; g.add(s0) }
+    const scaffale = (g, x, z, ry = 0, w = 14) => { const s0 = new THREE.Group(); for (const a of [-1, 1]) scatola(s0, 0.5, 18, 3, a * w / 2, 0, 0, MS); for (let k = 0; k < 5; k++) { scatola(s0, w, 0.4, 3, 0, k * 4.2, 0); for (let j = 0; j < w / 1.4 - 1; j++) if ((j * 7 + k * 3) % 5) { const h = 2.4 + ((j * 13 + k) % 5) * 0.3; scatola(s0, 1, h, 2.2, -w / 2 + 1.2 + j * 1.4, k * 4.2 + 0.4, 0, new THREE.MeshStandardMaterial({ color: [0xd9a5a0, 0x8fb3a0, 0xe0c78a, 0x9fa9c9, 0xe9e4da][(j + k) % 5], roughness: 0.8 })) } } s0.position.set(x, 0, z); s0.rotation.y = ry; g.add(s0) }
+    const leggio = (g, x, z) => { scatola(g, 0.5, 9, 0.5, x, 0, z, MS); const p = scatola(g, 4, 0.3, 3, x, 9, z); p.rotation.x = -0.4 }
+    const panca = (g, x, z, ry = 0, w = 12) => { const s0 = new THREE.Group(); scatola(s0, w, 0.6, 3, 0, 3.6, 0); for (const a of [-1, 1]) scatola(s0, 0.6, 3.6, 2.6, a * (w / 2 - 1), 0, 0, MS); s0.position.set(x, 0, z); s0.rotation.y = ry; g.add(s0) }
+    const tappeto = (g, w, d, col, tondo = false) => { const m = new THREE.Mesh(tondo ? new THREE.CircleGeometry(w / 2, 40) : new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({ color: col, roughness: 1 })); m.rotation.x = -Math.PI / 2; m.position.y = 0.15; m.receiveShadow = true; g.add(m) }
+    const griglia = (g, lato) => { const n = Math.round(lato / 6), pts = []; for (let i = 0; i <= n; i++) { const t = -lato / 2 + i * lato / n; pts.push(t, 0.05, -lato / 2, t, 0.05, lato / 2, -lato / 2, 0.05, t, lato / 2, 0.05, t) } const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); g.add(new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: 0xe9e4da, transparent: true, opacity: 0.12, depthWrite: false }))) }
+    const telescopio = (g, x, z) => { for (let k = 0; k < 3; k++) { const a = k * 2.094, l = scatola(g, 0.3, 9, 0.3, x + Math.cos(a) * 2, 0, z + Math.sin(a) * 2, MS); l.rotation.set(Math.sin(a) * 0.25, 0, -Math.cos(a) * 0.25) } const t = cil(g, 1.1, 9, x, 8.5, z); t.rotation.z = 0.9 }
+    const torchio = (g, x, z) => { scatola(g, 8, 6, 5, x, 0, z, MS); scatola(g, 6, 0.8, 4, x, 6, z); const c = cil(g, 1.4, 6, x, 7.5, z); c.rotation.z = Math.PI / 2 }
+    const telaio = (g, x, z, ry = 0) => { const s0 = new THREE.Group(); for (const a of [-1, 1]) scatola(s0, 0.6, 12, 0.6, a * 5, 0, 0, MS); scatola(s0, 10, 0.6, 0.6, 0, 11.5, 0, MS); scatola(s0, 9, 7, 0.1, 0, 3.5, 0, new THREE.MeshStandardMaterial({ color: 0xd9a5a0, roughness: 1, side: THREE.DoubleSide })); s0.position.set(x, 0, z); s0.rotation.y = ry; g.add(s0) }
+    const vetri = (g, x, z) => { scatola(g, 12, 0.5, 4, x, 0, z, MS); for (let k = 0; k < 5; k++) scatola(g, 0.15, 10, 3.6, x - 4.8 + k * 2.4, 0.5, z, MV) }
+    const letto = (g, x, z) => { scatola(g, 8, 2.6, 13, x, 0, z); scatola(g, 6, 1, 3, x, 2.6, z - 4.5, new THREE.MeshStandardMaterial({ color: 0xf6f2ea })) }
+    const vasca = (g, x, z) => { const r0 = new THREE.Mesh(new THREE.TorusGeometry(7, 0.9, 10, 40), MB); r0.rotation.x = -Math.PI / 2; r0.position.set(x, 1, z); g.add(r0); const w = new THREE.Mesh(new THREE.CircleGeometry(6.6, 40), new THREE.MeshStandardMaterial({ color: 0xff9eb5, roughness: 0.15, metalness: 0.2 })); w.rotation.x = -Math.PI / 2; w.position.set(x, 0.8, z); g.add(w) }
+    const pergola = (g, x, z) => { for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) scatola(g, 0.7, 13, 0.7, x + a * 8, 0, z + b * 6, MS); for (let k = -3; k <= 3; k++) scatola(g, 0.5, 0.5, 13, x + k * 2.6, 13, z, MS); for (let k = 0; k < 6; k++) cil(g, 1.4, 3, x - 7 + k * 2.8, 0, z + 9, new THREE.MeshStandardMaterial({ color: 0xc9806b, roughness: 1 })) }
+    const palco = (g, x, z) => { scatola(g, 22, 1.6, 12, x, 0, z); for (let k = 0; k < 12; k++) { const a = Math.PI * (0.15 + 0.7 * k / 11); sedia(g, x + Math.cos(a) * 24, z + 8 + Math.sin(a) * 12, Math.atan2(-(Math.cos(a) * 24), -(8 + Math.sin(a) * 12)) + Math.PI) } }
+    const cavalletto = (g, x, z) => { for (const a of [-1, 1]) { const l = scatola(g, 0.4, 13, 0.4, x + a * 1.6, 0, z, MS); l.rotation.z = -a * 0.12 } const t = scatola(g, 6, 7.5, 0.3, x, 5, z + 0.4, new THREE.MeshStandardMaterial({ color: 0xf6f2ea })); t.rotation.x = -0.12 }
+    const muro = (g, x, z) => scatola(g, 22, 14, 1.2, x, 0, z, new THREE.MeshStandardMaterial({ color: 0xd8d2c6, roughness: 1 }))
+    const RUG = { mensa: 0xd9a5a0, biblioteca: 0x8fb3a0, bottega: 0xe0c78a, officina: 0x9fa9c9, osservatorio: 0x2f3e66, archivio: 0xc9b6a0, assemblea: 0xd98aa0, guardaroba: 0xe8c4c8, piazza: 0xe9e4da, giardino: 0x9fc79a, casa: 0xd8cfc0, confine: 0xbfd6b0, fontana: 0xf0e6dc }
+    const COMPONI = {
+      mensa: g => { tappeto(g, 40, 28, RUG.mensa); tav(g, -9, -5, 15); tav(g, 9, 6, 15); scatola(g, 22, 8, 3, 0, 0, -16, MS) },
+      biblioteca: g => { tappeto(g, 38, 34, RUG.biblioteca); for (let k = 0; k < 4; k++) scaffale(g, -12 + (k % 2) * 24, -12 + Math.floor(k / 2) * 10, 0); leggio(g, -4, 10); leggio(g, 5, 10); tav(g, 0, 2, 10, 6) },
+      bottega: g => { tappeto(g, 36, 26, RUG.bottega); tav(g, -8, -6, 16, 7, false); tav(g, 10, 5, 12, 7, false); torchio(g, -10, 8); for (let k = 0; k < 4; k++) sedia(g, -14 + k * 5, -11) },
+      officina: g => { tappeto(g, 36, 28, RUG.officina); tav(g, -8, -6, 16, 7, false); vetri(g, 10, -6); tav(g, 4, 8, 14, 6, false); for (let k = 0; k < 3; k++) sedia(g, -2 + k * 5, 13, Math.PI) },
+      osservatorio: g => { tappeto(g, 30, 30, RUG.osservatorio, true); telescopio(g, -6, 0); telescopio(g, 7, -3); tav(g, 2, 9, 9, 5) },
+      archivio: g => { tappeto(g, 40, 40, RUG.archivio, true); for (let k = 0; k < 7; k++) { const a = k * 0.9, rr = 6 + k * 2.2; scaffale(g, Math.cos(a) * rr, Math.sin(a) * rr, -a + Math.PI / 2, 10) } },
+      assemblea: g => { tappeto(g, 48, 34, RUG.assemblea); palco(g, 0, -8) },
+      guardaroba: g => { tappeto(g, 30, 22, RUG.guardaroba); telaio(g, -7, 0); telaio(g, 7, 2, 0.4); scatola(g, 16, 0.5, 0.5, 0, 12, -8, MS) },
+      piazza: g => { tappeto(g, 52, 52, RUG.piazza, true); for (let k = 0; k < 5; k++) { const a = k * 1.2566; panca(g, Math.cos(a) * 20, Math.sin(a) * 20, -a + Math.PI / 2) } },
+      giardino: g => { tappeto(g, 34, 26, RUG.giardino); pergola(g, 0, -2) },
+      fontana: g => { tappeto(g, 28, 28, RUG.fontana, true); vasca(g, 0, 0); panca(g, 0, 11, 0, 10) },
+      casa: g => { tappeto(g, 16, 18, RUG.casa); letto(g, -2, -1); sedia(g, 5, 5) },
+      confine: g => { tappeto(g, 20, 14, RUG.confine); panca(g, -3, 3, 0, 10); cavalletto(g, 6, -3) },
+      strada: g => { muro(g, 0, 0) },
+    }
+    for (const { l, v } of LG.values()) {
+      const f = COMPONI[l.tipo] ?? (l.id.startsWith('piazzetta') ? COMPONI.confine : null); if (!f) continue
+      const g = new THREE.Group(); f(g); if (l.tipo !== 'casa' && l.tipo !== 'strada') griglia(g, l.tipo === 'piazza' ? 64 : 48)
+      g.position.copy(v); g.rotation.y = Math.round(Math.atan2(PZ.x - v.x, PZ.z - v.z) / (Math.PI / 2)) * (Math.PI / 2) // allineati alla piazza, ad angolo retto
+      scena.add(g)
+    }
+  }
   if (VI) {
     // le vie: dove passano spesso diventano sentieri chiari, tanto più larghi quanto più battuti (desideri, non progetti)
     const vmax = Math.max(1, ...VI.vie.map(v => v[2]))
