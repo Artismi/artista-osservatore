@@ -37,7 +37,9 @@ export function scriviCitta(MEM, C, img, s) {
   if (!C) return
   if (!portoVecchio(MEM)) { console.error('città: mancano i personaggi di Porto Vecchio, pagina non scritta'); return }
   copyFileSync(join(QUI, 'citta.js'), join(MEM, 'citta.js'))
-  const dati = { ...C, punti: C.punti.map(p => ({ ...p, img: img.has(p.id) ? 1 : 0 })) }
+  // ogni tavola con un'immagine: grande se è recente (img/), piccola per sempre (mini/)
+  const mini = new Set(existsSync(join(MEM, 'mini')) ? readdirSync(join(MEM, 'mini')).map(f => f.replace(/\.jpg$/, '')) : [])
+  const dati = { ...C, punti: C.punti.map(p => ({ ...p, img: img.has(p.id) ? 1 : 0, mini: mini.has(p.id) ? 1 : 0 })) }
   writeFileSync(join(MEM, 'citta.json'), JSON.stringify(dati))
   const st = s?.stile ?? {}
   const nome = C.nome ?? 'la città senza nome'

@@ -198,6 +198,7 @@
   const carica = new THREE.TextureLoader(), cliccabili = [], etichette = [], strato = document.getElementById('etichette')
   const etichetta = (html, p, lontano, cls = '') => { const el = document.createElement('div'); el.className = 'et ' + cls; el.innerHTML = html; strato.appendChild(el); const e = { el, p, lontano }; etichette.push(e); return e }
   const texDi = new Map(), texture = id => { if (!texDi.has(id)) texDi.set(id, new Promise(ok => carica.load(`img/${id}.jpg`, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; ok(t) }, undefined, () => ok(null)))); return texDi.get(id) }
+  const tavolaMatDa = url => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); carica.load(url, t => { t.encoding = THREE.sRGBEncoding; m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
   const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
   const materialeRiflesso = (id, alto, H) => { const mat = new THREE.ShaderMaterial({ uniforms: { mappa: { value: null } }, transparent: true, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
@@ -263,6 +264,42 @@
     const rec = { c, q, sala, centro, verso: ax, n, forma, aMondo, piano }
     e.el.onclick = () => vaiA(rec)
     sale.push(rec)
+  }
+
+  // ── i territori sono stanze enormi: tutto quello che Copibolo ha fatto ci sta, finché qualcuno non lo cancella.
+  // Ogni tavola resta nel suo punto del territorio (dove i suoi legami l'hanno messa), sospesa più in alto quanto più conta,
+  // grande quanto conta; le più amate sono quelle che il curatore ha già appeso al centro. Chi ha un'immagine la mostra
+  // (grande se recente, piccola per sempre); chi non ce l'ha più mostra il suo titolo, come un cartellino. ─────────
+  {
+    const fronte = 0 // tutte rivolte allo stesso verso, come le pagine di un atlante aperto
+    const resto = D.punti.filter(p => !meshDi.has(p.id))
+    for (const p of resto.filter(p => p.img || p.mini)) {
+      const x = X(p.x), z = Z(p.y), k = 0.35 + (p.i ?? 0.3), W = 4 + 9 * k, H = W * 1.25, y = altezza(x, z) + 12 + 46 * (p.i ?? 0.3)
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(W, H), tavolaMatDa(p.img ? `img/${p.id}.jpg` : `mini/${p.id}.jpg`)); m.position.set(x, y, z); m.rotation.y = fronte
+      const cornice = new THREE.Mesh(new THREE.PlaneGeometry(W + 0.7, H + 0.7), new THREE.MeshBasicMaterial({ color: 0xd9dbe6 })); cornice.position.copy(m.position); cornice.rotation.y = fronte; cornice.translateZ(-0.08)
+      scena.add(cornice); scena.add(m); m.userData = { tipo: 'tavola', p }; cliccabili.push(m); meshDi.set(p.id, { m, w: W, h: H, aTerra: false, cornice })
+    }
+    // i cartellini: i titoli delle tavole senza immagine, su poche tele grandi (una per 192 cartellini), uniti in una geometria sola per tela
+    const senza = resto.filter(p => !p.img && !p.mini).sort((a, b) => b.i - a.i).slice(0, 960), CW = 128, CH = 160, PER = 16 * 12
+    for (let t = 0; t * PER < senza.length; t++) {
+      const parte = senza.slice(t * PER, (t + 1) * PER), cv = document.createElement('canvas'); cv.width = 2048; cv.height = 1920; const g = cv.getContext('2d')
+      const pos = [], uv = [], ind = []
+      parte.forEach((p, i) => {
+        const cx = (i % 16) * CW, cy = Math.floor(i / 16) * CH
+        g.fillStyle = '#16171b'; g.fillRect(cx + 2, cy + 2, CW - 4, CH - 4); g.strokeStyle = 'rgba(232,226,214,.5)'; g.strokeRect(cx + 3, cy + 3, CW - 6, CH - 6)
+        g.fillStyle = '#e8e2d6'; g.font = '600 15px Inter, sans-serif'; const parole = (p.t || 'senza titolo').split(/\s+/); let riga = '', yy = cy + 24
+        for (const w of parole) { if (g.measureText(riga + ' ' + w).width > CW - 18) { g.fillText(riga, cx + 9, yy); riga = w; yy += 18; if (yy > cy + CH - 30) break } else riga = riga ? riga + ' ' + w : w }
+        if (yy <= cy + CH - 30) g.fillText(riga, cx + 9, yy)
+        g.fillStyle = 'rgba(232,226,214,.5)'; g.font = '11px JetBrains Mono, monospace'; g.fillText(`giorno ${p.g}`, cx + 9, cy + CH - 12)
+        const x = X(p.x), z = Z(p.y), k = 0.3 + (p.i ?? 0.3), W = 3 + 6 * k, H = W * 1.25, y = altezza(x, z) + 8 + 34 * (p.i ?? 0.3), b = pos.length / 3
+        pos.push(x - W / 2, y - H / 2, z, x + W / 2, y - H / 2, z, x + W / 2, y + H / 2, z, x - W / 2, y + H / 2, z)
+        const u0 = cx / 2048, u1 = (cx + CW) / 2048, v0 = 1 - (cy + CH) / 1920, v1 = 1 - cy / 1920
+        uv.push(u0, v0, u1, v0, u1, v1, u0, v1); ind.push(b, b + 1, b + 2, b, b + 2, b + 3)
+      })
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(ind)
+      const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = 4
+      scena.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })))
+    }
   }
 
   // ── gli interventi dei cittadini: lavorano sui piani delle tavole, che sono muri invisibili. Rilievi, parole,

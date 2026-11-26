@@ -181,6 +181,12 @@ try {
     if (existsSync(join(MEM, 'img', `${id}.jpg`))) continue
     try { const url = await pg.evaluate(id => window.__artista.memoria.jpeg(id), id); if (url) writeFileSync(join(MEM, 'img', `${id}.jpg`), Buffer.from(url.split(',')[1], 'base64')) } catch (e) { log('immagine: non riesco a salvare', id, e.message) }
   }
+  // le miniature: di ogni tavola resta per sempre una piccola immagine (la città mostra tutto, finché qualcuno non cancella)
+  mkdirSync(join(MEM, 'mini'), { recursive: true })
+  for (const f of readdirSync(join(MEM, 'img'))) {
+    const id = f.replace(/\.jpg$/, ''); if (!f.endsWith('.jpg') || existsSync(join(MEM, 'mini', f))) continue
+    try { const u = await pg.evaluate(async src => { const im = new Image(); im.src = src; await im.decode(); const k = 320 / Math.max(im.width, im.height), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.72) }, 'data:image/jpeg;base64,' + readFileSync(join(MEM, 'img', f)).toString('base64')); writeFileSync(join(MEM, 'mini', f), Buffer.from(u.split(',')[1], 'base64')) } catch (e) { log('miniatura non fatta', id, e.message) }
+  }
   for (const f of readdirSync(join(MEM, 'img'))) if (!tenere.has(f.replace(/\.jpg$/, ''))) rmSync(join(MEM, 'img', f))
   mkdirSync(join(MEM, 'cassetto'), { recursive: true })
   const tieni = new Set()
