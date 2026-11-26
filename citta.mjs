@@ -80,7 +80,7 @@ header{background:linear-gradient(180deg,rgba(6,7,10,.85),rgba(6,7,10,0));paddin
 <header><h1>${esc(nome)}</h1><p>La città interna di ${esc(s?.nome ?? '')}: le sue tavole raccolte in sale secondo quello che hanno in comune, allestite dagli abitanti che le curano. Giorno ${C.giorno}.</p><nav><a href="index.html">parete</a><a href="archivio.html">opere</a><a href="diario.html">pensieri</a></nav></header>
 <nav id="indice"></nav><div id="etichette"></div><aside id="scheda"></aside><button id="apri">il verbale di oggi</button><div id="aiuto">trascina per spostarti · col destro giri · rotella per avvicinarti · tocca una sala o una tavola</div>
 <script src="pv/three.min.js"></script><script src="pv/gltf_loader.js"></script><script src="pv/animazioni.js"></script><script src="pv/anim_vita.js"></script><script src="pv/oggetti3d.js"></script><script src="pv/roba3d.js"></script><script src="pv/anim_lotta.js"></script><script src="pv/anim_mano.js"></script><script src="pv/anim_gesti.js"></script><script src="pv/models.js"></script><script src="pv/sartoria.js"></script><script src="pv/pittura.js"></script><script src="pv/vestiario.js"></script><script src="pv/personaggi.js"></script>
-<script src="citta.js"></script>
+<script src="citta.js?v=${Date.now()}"></script>
 </body></html>`
   writeFileSync(join(MEM, 'citta.html'), html)
 }
