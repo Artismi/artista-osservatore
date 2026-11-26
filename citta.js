@@ -186,13 +186,18 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
         float fbm9(vec2 p){ return pn9(p) * .55 + pn9(p * 2.1 + 7.) * .28 + pn9(p * 4.3 + 13.) * .17; }`).replace('#include <color_fragment>', `#include <color_fragment>
         vec2 gu = vec2((vMondo.x/${S.toFixed(3)}+${cxT.toFixed(2)})/1000., (vMondo.z/${S.toFixed(3)}+${cyT.toFixed(2)})/1000.); vec3 g = texture2D(geo, gu).rgb * step(0., gu.x)*step(gu.x,1.)*step(0.,gu.y)*step(gu.y,1.);
         vec2 pm = vMondo.xz * .45;
-        // il verde onirico: un verde pieno che vira al giallo sulle creste e al blu-verde nelle valli
-        vec3 verde = mix(vec3(.05,.30,.07), vec3(.20,.55,.10), smoothstep(1., 24., vMondo.y)) * (.9 + .2 * fbm9(vMondo.xz * .012));
-        vec3 prato = prato9(verde, pm);
-        // la terra rosa che esce da sotto il prato: chiazze morbide dove l'erba si apre, con l'orlo sfrangiato dai fili
-        float n = fbm9(vMondo.xz * .009 + 3.) + (g.r - .5) * .12, orlo = (pn9(pm * 3.) - .5) * .08;
-        float terra = smoothstep(.69, .77, n + orlo) * (1. - smoothstep(14., 26., vMondo.y));
-        vec3 rosa = vec3(.80,.40,.44) * (.85 + .3 * pn9(pm * .7)) * mix(vec3(1.), vec3(1.05,.9,.95), pn9(pm * 6.));
+        // il verde pastello, morbido: verde foglia con riflessi rosati e giallini che scorrono a macchie larghe
+        float m1 = fbm9(vMondo.xz * .010), m2 = fbm9(vMondo.xz * .023 + 9.), m3 = fbm9(vMondo.xz * .006 + 21.);
+        vec3 verde = mix(vec3(.30,.62,.30), vec3(.52,.78,.36), smoothstep(1., 22., vMondo.y));
+        verde = mix(verde, vec3(.72,.80,.42), smoothstep(.52, .78, m1) * .55);   // riflessi giallini
+        verde = mix(verde, vec3(.78,.62,.62), smoothstep(.55, .82, m2) * .35);   // riflessi rosati
+        verde = mix(verde, vec3(.22,.56,.40), smoothstep(.6, .85, m3) * .4);     // verde foglia più fresco
+        verde = pow(verde, vec3(2.2));                                           // i colori sono pensati in sRGB
+        vec3 prato = mix(prato9(verde, pm), verde, .35);                         // la grana del prato, ma ammorbidita
+        // la terra rosa come sabbia al tramonto: chiazze morbide che escono da sotto il prato, con l'orlo sfumato
+        float n = fbm9(vMondo.xz * .009 + 3.) + (g.r - .5) * .12, orlo = (pn9(pm * 2.) - .5) * .05;
+        float terra = smoothstep(.66, .80, n + orlo) * (1. - smoothstep(14., 26., vMondo.y));
+        vec3 rosa = mix(vec3(.93,.66,.62), vec3(.98,.78,.66), pn9(vMondo.xz * .03)) * (.94 + .08 * pn9(pm * 5.)); rosa = pow(rosa, vec3(2.2));
         diffuseColor.rgb = mix(prato, rosa, terra);`)
         .replace('#include <fog_fragment>', `#include <fog_fragment>
         gl_FragColor.rgb = mix(gl_FragColor.rgb, pow(nebbia, vec3(2.2)), smoothstep(occhio.z * .9, occhio.z * 2.2, length(vMondo.xz - occhio.xy)));`)
@@ -361,12 +366,12 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     const cv = document.createElement('canvas'); cv.width = cv.height = 192; const g = cv.getContext('2d'); let h = 0; for (const ch of (d.gesto ?? '') + d.strumento) h = (h * 31 + ch.charCodeAt(0)) >>> 0
     const rr = () => ((h = (h * 1664525 + 1013904223) >>> 0) / 4294967296), col = d.colore ?? '#e3361b', due = ['#1b1b1b', '#e8e2d6', '#ff8fa8', '#3b6fd8'][h % 4]
     g.translate(96, 96); const st = d.strumento ?? 'materia'
-    if (/albero|semina/.test(st)) { g.strokeStyle = col; const ramo = (x, y, a, l, n) => { const x2 = x + Math.cos(a) * l, y2 = y + Math.sin(a) * l; g.lineWidth = n; g.beginPath(); g.moveTo(x, y); g.lineTo(x2, y2); g.stroke(); if (n > 1) { ramo(x2, y2, a - 0.4 - rr() * 0.4, l * 0.72, n - 1); ramo(x2, y2, a + 0.4 + rr() * 0.4, l * 0.72, n - 1) } }; for (let k = 0; k < 5; k++) ramo(0, 0, k * 1.256, 26, 6) }
-    else if (/muffa|cristallo/.test(st)) { for (let k = 0; k < 160; k++) { const a = rr() * 6.28, d0 = Math.sqrt(rr()) * 86; g.fillStyle = k % 3 ? col : due; g.globalAlpha = 0.7; if (/cristallo/.test(st)) { g.save(); g.translate(Math.cos(a) * d0, Math.sin(a) * d0); g.rotate(a); g.fillRect(-3, -9, 6, 18); g.restore() } else { g.beginPath(); g.arc(Math.cos(a) * d0, Math.sin(a) * d0, 2 + rr() * 7, 0, 7); g.fill() } } }
-    else if (/acqua|universo|fotocosmo|shader|metashader/.test(st)) { const gr = g.createRadialGradient(0, 0, 4, 0, 0, 92); gr.addColorStop(0, col); gr.addColorStop(0.6, due); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 92, 0, 7); g.fill(); g.fillStyle = '#fff'; for (let k = 0; k < 60; k++) g.fillRect((rr() - 0.5) * 150, (rr() - 0.5) * 150, 1.5, 1.5) }
-    else if (/pattern|ripeti|grana|ricetta/.test(st)) { g.fillStyle = col; for (let y = -90; y < 90; y += 10) for (let x = -90; x < 90; x += 10) if (Math.hypot(x, y) < 88) { g.beginPath(); g.arc(x, y, 1 + 3.5 * (0.5 + 0.5 * Math.sin(x * 0.07 + y * 0.05)), 0, 7); g.fill() } }
-    else if (/geometria|taglia|togli|schiaccia/.test(st)) { g.strokeStyle = col; g.lineWidth = 5; for (let k = 1; k < 7; k++) { g.rotate(0.12); g.strokeRect(-k * 13, -k * 13, k * 26, k * 26) } }
-    else if (/traccia|scrivi/.test(st) || !d.strumento) { g.fillStyle = col; g.font = '700 30px Inter, sans-serif'; g.textAlign = 'center'; g.fillText(d.parola ?? '', 0, 10); g.strokeStyle = due; g.lineWidth = 3; g.beginPath(); for (let k = 0; k < 40; k++) g.lineTo(Math.cos(k * 0.5) * (40 + k), Math.sin(k * 0.5) * (40 + k) * 0.6); g.stroke() }
+    if (/albero|semina|acanto|spirale/.test(st)) { g.strokeStyle = col; const ramo = (x, y, a, l, n) => { const x2 = x + Math.cos(a) * l, y2 = y + Math.sin(a) * l; g.lineWidth = n; g.beginPath(); g.moveTo(x, y); g.lineTo(x2, y2); g.stroke(); if (n > 1) { ramo(x2, y2, a - 0.4 - rr() * 0.4, l * 0.72, n - 1); ramo(x2, y2, a + 0.4 + rr() * 0.4, l * 0.72, n - 1) } }; for (let k = 0; k < 5; k++) ramo(0, 0, k * 1.256, 26, 6) }
+    else if (/muffa|cristallo|reazione|voronoi/.test(st)) { for (let k = 0; k < 160; k++) { const a = rr() * 6.28, d0 = Math.sqrt(rr()) * 86; g.fillStyle = k % 3 ? col : due; g.globalAlpha = 0.7; if (/cristallo/.test(st)) { g.save(); g.translate(Math.cos(a) * d0, Math.sin(a) * d0); g.rotate(a); g.fillRect(-3, -9, 6, 18); g.restore() } else { g.beginPath(); g.arc(Math.cos(a) * d0, Math.sin(a) * d0, 2 + rr() * 7, 0, 7); g.fill() } } }
+    else if (/acqua|universo|fotocosmo|shader|metashader|marmor|frattale/.test(st)) { const gr = g.createRadialGradient(0, 0, 4, 0, 0, 92); gr.addColorStop(0, col); gr.addColorStop(0.6, due); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 92, 0, 7); g.fill(); g.fillStyle = '#fff'; for (let k = 0; k < 60; k++) g.fillRect((rr() - 0.5) * 150, (rr() - 0.5) * 150, 1.5, 1.5) }
+    else if (/pattern|ripeti|grana|ricetta|intreccio|arabesco|damasco|pied|moir/.test(st)) { g.fillStyle = col; for (let y = -90; y < 90; y += 10) for (let x = -90; x < 90; x += 10) if (Math.hypot(x, y) < 88) { g.beginPath(); g.arc(x, y, 1 + 3.5 * (0.5 + 0.5 * Math.sin(x * 0.07 + y * 0.05)), 0, 7); g.fill() } }
+    else if (/geometria|taglia|togli|schiaccia|meandro|guilloch|rosone|cosmat|labirinto/.test(st)) { g.strokeStyle = col; g.lineWidth = 5; for (let k = 1; k < 7; k++) { g.rotate(0.12); g.strokeRect(-k * 13, -k * 13, k * 26, k * 26) } }
+    else if (/traccia|scrivi|xilograf/.test(st) || !d.strumento) { g.fillStyle = col; g.font = '700 30px Inter, sans-serif'; g.textAlign = 'center'; g.fillText(d.parola ?? '', 0, 10); g.strokeStyle = due; g.lineWidth = 3; g.beginPath(); for (let k = 0; k < 40; k++) g.lineTo(Math.cos(k * 0.5) * (40 + k), Math.sin(k * 0.5) * (40 + k) * 0.6); g.stroke() }
     else { for (let k = 0; k < 9; k++) { g.fillStyle = k % 2 ? col : due; g.globalAlpha = 0.8; g.beginPath(); g.ellipse((rr() - 0.5) * 100, (rr() - 0.5) * 100, 14 + rr() * 40, 10 + rr() * 26, rr() * 3, 0, 7); g.fill() } }
     g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1
     // il filtro, a modo suo
