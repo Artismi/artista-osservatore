@@ -90,6 +90,17 @@
   })
   cv.addEventListener('pointerup', () => { setTimeout(() => { tira = null }, 0) })
   cv.addEventListener('contextmenu', e => e.preventDefault())
+  // i comandi a vista: ruotare di un quarto di giro, avvicinarsi, allontanarsi, tornare all'insieme (anche coi tasti Q E + -)
+  { const pan = document.createElement('div'); pan.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:44px;display:flex;gap:6px;z-index:6'
+    const bt = (t, tit, fn) => { const b = document.createElement('button'); b.textContent = t; b.title = tit; b.style.cssText = 'width:38px;height:38px;border:1px solid rgba(232,226,214,.35);background:rgba(12,13,16,.8);color:#e8e2d6;font:16px Inter,sans-serif;cursor:pointer'; b.onclick = e => { e.stopPropagation(); O.auto = false; volo = null; fn() }; pan.appendChild(b) }
+    const gira = k => { O.yaw += k * Math.PI / 4 }, zoom = k => { O.dist = Math.min(2600, Math.max(40, O.dist * k)) }
+    bt('⟲', 'ruota a sinistra (Q)', () => gira(1)); bt('⟳', 'ruota a destra (E)', () => gira(-1)); bt('+', 'avvicina (+)', () => zoom(0.7)); bt('−', 'allontana (−)', () => zoom(1.4)); bt('◇', "torna all'insieme", () => { O.dist = 900; O.t.set(0, 20, 0); O.yaw = Math.PI / 4 })
+    document.body.appendChild(pan)
+    addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.key === 'q' || e.key === 'Q') gira(1); else if (e.key === 'e' || e.key === 'E') gira(-1); else if (e.key === '+' || e.key === '=') zoom(0.8); else if (e.key === '-') zoom(1.25) })
+    let prima = null
+    cv.addEventListener('touchmove', e => { if (e.touches.length !== 2) { prima = null; return } e.preventDefault(); const [a, b] = e.touches, d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), an = Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX)
+      if (prima) { zoom(prima.d / d); O.yaw += (an - prima.an) } prima = { d, an } }, { passive: false })
+    cv.addEventListener('touchend', () => { prima = null }) }
   cv.addEventListener('wheel', e => { e.preventDefault(); O.auto = false; volo = null; O.dist = Math.min(2600, Math.max(40, O.dist * Math.exp(e.deltaY * 0.0012))) }, { passive: false })
   const metti = () => {
     O.yaw += O.v.yaw; O.v.yaw *= 0.85
