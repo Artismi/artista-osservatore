@@ -588,8 +588,8 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
   // mette la tavola più amata al posto d'onore e accosta le altre seguendo i fili che le legano. ──────────────────
   const carica = new THREE.TextureLoader(), cliccabili = [], etichette = [], strato = document.getElementById('etichette')
   const etichetta = (html, p, lontano, cls = '') => { const el = document.createElement('div'); el.className = 'et ' + cls; el.innerHTML = html; strato.appendChild(el); const e = { el, p, lontano }; etichette.push(e); return e }
-  const texDi = new Map(), texture = id => { if (!texDi.has(id)) texDi.set(id, new Promise(ok => carica.load(`img/${id}.jpg`, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = 8; ok(t) }, undefined, () => ok(null)))); return texDi.get(id) }
-  const tavolaMatDa = url => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); carica.load(url, t => { t.encoding = THREE.sRGBEncoding; m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
+  const texDi = new Map(), texture = id => { if (!texDi.has(id)) texDi.set(id, new Promise(ok => carica.load(`img/${id}.jpg`, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = R.capabilities.getMaxAnisotropy(); ok(t) }, undefined, () => ok(null)))); return texDi.get(id) }
+  const tavolaMatDa = url => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); carica.load(url, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = R.capabilities.getMaxAnisotropy(); m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
   const tavolaMat = (id, taglio) => { const m = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide }); m.userData.tavola = true; texture(id).then(t0 => { if (!t0) return; const t = taglio ? t0.clone() : t0; if (taglio) { t.offset.set(taglio[0], taglio[1]); t.repeat.set(taglio[2], taglio[3]); t.needsUpdate = true } m.map = t; m.color.set(0xffffff); m.needsUpdate = true }); return m }
   const materialeRiflesso = (id, alto, H) => { if (true) return new THREE.MeshBasicMaterial({ visible: false }); const mat = new THREE.ShaderMaterial({ uniforms: { mappa: { value: null } }, transparent: true, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
@@ -670,7 +670,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     const dSeg = (x, z, a, b) => { const ex = b[0] - a[0], ez = b[1] - a[1], L2 = ex * ex + ez * ez || 1, t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / L2)); return Math.hypot(x - a[0] - ex * t, z - a[1] - ez * t) }
     const MARG = 16, PASSO = 1.6, FILE = 3, CAP = FILE * (CELLA - 2 * MARG)
     const PAR = [...URB.parole.values()].map(P => ({ P, r: radiceP(P.w) }))
-    const lista = resto.map(p => { const con = !!(p.img || p.mini), k = 0.35 + (p.i ?? 0.3), W = con ? 6 + 8 * k : 4.2, t = (p.t ?? '').toLowerCase(); return { p, con, W, H: W * 1.25, x: X(p.x), z: Z(p.y), parole: PAR.filter(q => t.includes(q.r)).map(q => q.P) } })
+    const lista = resto.map(p => { const con = !!(p.img || p.mini), k = 0.35 + (p.i ?? 0.3), W = con ? 9 + 9 * k : 5, t = (p.t ?? '').toLowerCase(); return { p, con, W, H: W * 1.25, x: X(p.x), z: Z(p.y), parole: PAR.filter(q => t.includes(q.r)).map(q => q.P) } })
       .sort((a, b) => (b.con - a.con) || (b.parole.length - a.parole.length) || ((b.p.i ?? 0) - (a.p.i ?? 0)))
     // una strada è una linea spezzata (dritta nella griglia, curva nella muffa): lunghezza, punto e normale a una data distanza
     for (const s of URB.strade) { s.cum = [0]; for (let i = 1; i < s.vis.length; i++) s.cum.push(s.cum[i - 1] + Math.hypot(s.vis[i][0] - s.vis[i - 1][0], s.vis[i][1] - s.vis[i - 1][1])); s.L = s.cum[s.cum.length - 1]
@@ -705,7 +705,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
     // le tavole che hanno solo il titolo: cartellini di carta col titolo stampato, su poche tele grandi (192 per tela)
     const senza = lista.filter(t => t.wx != null && !t.con), CW = 128, CH = 160, PER = 16 * 12
     for (let tt = 0; tt * PER < senza.length; tt++) {
-      const parte = senza.slice(tt * PER, (tt + 1) * PER), cv = document.createElement('canvas'); cv.width = 1024; cv.height = 960; const g = cv.getContext('2d'); g.scale(0.5, 0.5) // a metà risoluzione: 13 tele da 4 MB invece che da 16
+      const parte = senza.slice(tt * PER, (tt + 1) * PER), cv = document.createElement('canvas'), mezza = LEGGERA ? 0.5 : 1; cv.width = 2048 * mezza; cv.height = 1920 * mezza; const g = cv.getContext('2d'); g.scale(mezza, mezza) // a metà risoluzione: 13 tele da 4 MB invece che da 16
       const pos = [], uv = [], ind = []
       parte.forEach((t, i) => { const p = t.p
         const cx = (i % 16) * CW, cy = Math.floor(i / 16) * CH
@@ -720,7 +720,7 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
         uv.push(u0, v0, u1, v0, u1, v1, u0, v1); ind.push(b, b + 1, b + 2, b, b + 2, b + 3)
       })
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(ind)
-      const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = 4; LIBERABILI.add(tx)
+      const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; tx.anisotropy = R.capabilities.getMaxAnisotropy(); LIBERABILI.add(tx)
       scena.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide })))
     }
   }
@@ -914,20 +914,42 @@ varying vec3 vMondo; uniform vec3 occhio; uniform sampler2D geo; uniform vec3 ne
       const maschera = new THREE.CanvasTexture(cv2); maschera.minFilter = THREE.LinearFilter; maschera.generateMipmaps = false; LIBERABILI.add(maschera)
       const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96 })
       mat.onBeforeCompile = sh => {
-        sh.uniforms.uMask = { value: maschera }; sh.uniforms.uB = { value: new THREE.Vector4(cxS - LS / 2, czS - LS / 2, LS, LS) }; sh.uniforms.uR = { value: new THREE.Vector4(cxS, czS, (LS - 700) * 0.5, LS * 0.48) }
+        sh.uniforms.uMask = { value: maschera }; sh.uniforms.uNebbia = { value: nebbia }; sh.uniforms.uB = { value: new THREE.Vector4(cxS - LS / 2, czS - LS / 2, LS, LS) }; sh.uniforms.uR = { value: new THREE.Vector4(cxS, czS, (LS - 700) * 0.62, LS * 1.6) }
         sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMondo;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvMondo = (modelMatrix*vec4(position,1.)).xyz;')
         sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
 varying vec3 vMondo; uniform sampler2D uMask; uniform vec4 uB; uniform vec4 uR;
 float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float n21(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f); return mix(mix(h21(i), h21(i+vec2(1.,0.)), f.x), mix(h21(i+vec2(0.,1.)), h21(i+1.), f.x), f.y); }
-float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }`).replace('#include <color_fragment>', `#include <color_fragment>
+float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }
+uniform vec3 uNebbia;
+// il prato di Porto Vecchio (render.js, prato9): fili, ciuffi, fughe fredde, punte calde, chiazze secche
+vec3 prato9(vec3 base, vec2 p){
+  vec2 fw = fwidth(p); float mpp = max(fw.x, fw.y);
+  float aa = 1. - smoothstep(.025, .07, mpp), aa2 = 1. - smoothstep(.04, .12, mpp);
+  float cl = n21(p * 1.9) * .6 + n21(p * 4.6 + 3.) * .4, zo = n21(p * .21 + 11.), dryN = n21(p * .55 + 31.);
+  vec2 a = mat2(.96, .28, -.28, .96) * p, b = mat2(.93, -.37, .37, .93) * p;
+  float s1 = n21(a * vec2(19., 4.2)), s2 = n21(b * vec2(29., 6.) + 5.), s3 = n21(p * vec2(9., 2.4) + 17.);
+  float bl = smoothstep(.55, .9, max(s1, s2 * .97)), gap = smoothstep(.32, .06, min(s1, s2));
+  float tuft = smoothstep(.6, .85, s3) * smoothstep(.45, .7, cl);
+  float k = .86 + (cl - .5) * .42 + (zo - .5) * .3;
+  vec3 c = base * (k + (bl * .5 - gap * .38) * aa + tuft * .22 * aa2);
+  c = mix(c, c * vec3(1.1, 1.07, .78), clamp(bl * aa * .55 + tuft * aa2 * .3, 0., 1.));
+  c = mix(c, c * vec3(.8, .94, 1.12), gap * aa * .6);
+  float dry = smoothstep(.7, .88, dryN) * (1. - tuft);
+  c = mix(c, vec3(dot(c, vec3(.3, .59, .11))) * vec3(1.2, 1.15, .8), dry * .25);
+  return c; }`).replace('#include <color_fragment>', `#include <color_fragment>
         vec4 mk = texture2D(uMask, vec2((vMondo.x - uB.x)/uB.z, (vMondo.z - uB.y)/uB.w));
         float strada = smoothstep(.30, .62, mk.r), sentiero = smoothstep(.14, .36, mk.r) * (1. - strada), corso = smoothstep(.35, .7, mk.g);
-        // la terra battuta: calda, a chiazze, con la grana
+        // il prato di Porto Vecchio dappertutto: verde morbido con riflessi giallini e rosati, la sua grana di fili e ciuffi
         float a1 = fbm(vMondo.xz*.012), a2 = fbm(vMondo.xz*.09 + 4.), a3 = n21(vMondo.xz*.9);
-        vec3 terra = mix(vec3(.13,.115,.118), vec3(.185,.158,.145), a1) * (.88 + .22*a2) * (.94 + .1*a3);
-        terra = mix(terra, terra*vec3(1.05,.92,1.08), smoothstep(.55,.8,fbm(vMondo.xz*.02+9.))*.6);   // un velo lilla
-        vec3 battuta = mix(vec3(.25,.215,.19), vec3(.31,.27,.23), a2) * (.92 + .12*a3);
+        float m1 = fbm(vMondo.xz * .010), m2 = fbm(vMondo.xz * .023 + 9.), m3 = fbm(vMondo.xz * .006 + 21.);
+        vec3 verde = vec3(.36,.66,.32);
+        verde = mix(verde, vec3(.70,.78,.42), smoothstep(.52, .78, m1) * .5);
+        verde = mix(verde, vec3(.76,.64,.60), smoothstep(.55, .82, m2) * .28);
+        verde = mix(verde, vec3(.24,.56,.40), smoothstep(.6, .85, m3) * .4);
+        vec3 terra = mix(prato9(verde, vMondo.xz * .45), verde, .35);
+        terra = mix(terra, vec3(dot(terra, vec3(.3,.59,.11))), .18);   // un poco più pastello
+        vec3 battuta = mix(vec3(.62,.52,.40), vec3(.72,.61,.47), a2) * (.92 + .12*a3);
         // i sampietrini: file sfalsate di cubetti, ognuno della sua tinta, le fughe scure
         vec2 q = vMondo.xz / 2.3; q.x += .5*mod(floor(q.y), 2.); vec2 f = fract(q) - .5, id = floor(q); float hh = h21(id);
         float fuga = smoothstep(.36, .48, max(abs(f.x), abs(f.y)));
@@ -939,11 +961,11 @@ float fbm(vec2 p){ return n21(p)*.55 + n21(p*2.1+7.)*.28 + n21(p*4.3+13.)*.17; }
         vec3 c = mix(terra, battuta, sentiero);
         c = mix(c, pietra, strada); c = mix(c, lastra, corso * strada);
         float orlo = smoothstep(.18, .32, mk.r) * (1. - smoothstep(.32, .5, mk.r)); c *= 1. - .35*orlo;   // il bordo della strada, un poco in ombra
-        float lontano = length(vMondo.xz - uR.xy); c *= 1. - smoothstep(uR.z, uR.w, lontano);
-        diffuseColor.rgb = pow(c, vec3(2.2));`)
+        diffuseColor.rgb = pow(c, vec3(2.2));`).replace('#include <fog_fragment>', `#include <fog_fragment>
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, uNebbia, smoothstep(uR.z, uR.w, length(vMondo.xz - uR.xy)));   // ai margini il prato sfuma nella foschia del cielo`)
       }
-      const suolo = new THREE.Mesh(new THREE.CircleGeometry(LS * 0.49, 96), mat); suolo.rotation.x = -Math.PI / 2; suolo.position.set(cxS, -0.05, czS); suolo.receiveShadow = true; scena.add(suolo)
-      scena.background = new THREE.Color(0x06050a)
+      const suolo = new THREE.Mesh(new THREE.CircleGeometry(LS * 2.2, 128), mat); suolo.rotation.x = -Math.PI / 2; suolo.position.set(cxS, -0.05, czS); suolo.receiveShadow = true; scena.add(suolo)
+      scena.background = cieloTx // il cielo di Porto Vecchio, che cambia con l'ora (non più il buio)
     }
     // la piazza: un lastricato a riquadri
     const LP = URB.lotti.get('piazza'); if (LP) { const cv = document.createElement('canvas'); cv.width = cv.height = 512; const g = cv.getContext('2d'); g.fillStyle = '#4b4741'; g.fillRect(0, 0, 512, 512)
