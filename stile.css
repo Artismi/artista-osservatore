@@ -1,0 +1,21 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;700;900&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=JetBrains+Mono&display=swap');
+:root{--bg:#d9d2c3;--ink:#26231e;--acc:#7d1b1b;--m:10vw}
+*{box-sizing:border-box}main.pieno{max-width:none;padding:0}.striscia{display:block;width:100%;height:110px}body{margin:0;background:var(--bg);color:var(--ink);font:19px/1.6 Newsreader,Georgia,serif}
+a{color:var(--acc)}header,main,footer{max-width:1100px;margin:auto;padding:0 max(20px,var(--m))}
+header{padding-top:48px}h1,h2,h3,.titolo{font-family:'Instrument Serif',Georgia,serif;font-weight:400;line-height:1.05;letter-spacing:-.01em}
+h1{font-size:clamp(44px,8vw,96px);margin:0}h2{font-size:clamp(26px,3.6vw,40px);margin:1.4em 0 .3em}h3{font-size:22px;margin:1.2em 0 .2em}
+nav{display:flex;gap:18px;flex-wrap:wrap;margin:18px 0 8px;font:14px/1 'JetBrains Mono',monospace;text-transform:lowercase}nav a{color:var(--ink);text-decoration:none;border-bottom:2px solid var(--acc)}
+.meta{font:13px/1.4 'JetBrains Mono',monospace;opacity:.7}.bio{max-width:680px;font-size:21px}
+.ora{display:inline-block;margin:8px 0 24px;padding:6px 10px;border:1px solid var(--ink);font:13px/1.3 'JetBrains Mono',monospace}
+.visione{border-left:4px solid var(--acc);padding:4px 0 4px 18px;margin:24px 0}
+.voce{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:28px;padding:28px 0;border-top:1px solid color-mix(in srgb,var(--ink) 25%,transparent)}
+.voce.nota{grid-template-columns:1fr}.mini{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.mini img{width:88px;height:110px;object-fit:cover;aspect-ratio:auto}.scarto{opacity:.55}.verbale{font-size:16px;max-width:680px;border-left:1px solid var(--ink);padding-left:14px}.voce img{width:100%;aspect-ratio:4/5;object-fit:cover;display:block}
+.voce h2{margin-top:.2em}.voce .breve{font-style:italic;max-width:640px}
+@media(max-width:720px){.voce{grid-template-columns:1fr}}
+.tavola{margin:40px 0}.tavola img{width:min(100%,760px);display:block}.tavola .testo{max-width:680px}
+.pensiero{font-size:24px;max-width:720px;border-top:2px solid var(--ink);padding-top:14px}
+audio,video{display:block;margin:14px 0}video{max-height:70vh;aspect-ratio:9/16;background:#000}
+.capitolo p{max-width:700px}.tipo{font:12px 'JetBrains Mono',monospace;opacity:.6;text-transform:uppercase;letter-spacing:.08em}
+.sw{display:inline-block;width:18px;height:18px;border-radius:50%;vertical-align:middle;margin-right:4px;border:1px solid color-mix(in srgb,var(--ink) 30%,transparent)}
+table{border-collapse:collapse}td{padding:4px 14px 4px 0;vertical-align:top}footer{padding:60px 0 80px;font:13px 'JetBrains Mono',monospace;opacity:.7}
